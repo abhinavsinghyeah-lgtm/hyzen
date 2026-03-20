@@ -11,8 +11,7 @@ const { invalidate } = require("./containersCache");
 const execFileAsync = util.promisify(execFile);
 
 function dockerInstance() {
-  // Temporary: always connect to local Docker TCP for testing.
-  return new Docker({ host: "localhost", port: 2375 });
+  return new Docker({ socketPath: process.env.DOCKER_SOCKET || '/var/run/docker.sock' });
 }
 
 function parseGitHubRepo(repoUrl) {
