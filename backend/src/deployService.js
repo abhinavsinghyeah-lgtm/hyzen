@@ -347,27 +347,20 @@ async function deployToDocker({
     log(`Building Docker image ${imageTag}...\n`);
     log(`Build will output image: ${imageTag}\n`);
 
-    const pack = tarfs.pack(cloneDir);
     await new Promise((resolve, reject) => {
-      docker.buildImage(pack, { t: imageTag }, (err, output) => {
-        if (err) return reject(err);
-        docker.modem.followProgress(
-          output,
-          (err2) => (err2 ? reject(err2) : resolve()),
-          (event) => {
-            const line = (event && (event.stream || event.status)) || "";
-            if (line) log(String(line));
-          }
-        );
+      const buildProcess = require('child_process').spawn(
+        'docker', ['build', '-t', imageTag, cloneDir],
+        { stdio: ['ignore', 'pipe', 'pipe'] }
+      );
+      buildProcess.stdout.on('data', (data) => log(data.toString()));
+      buildProcess.stderr.on('data', (data) => log(data.toString()));
+      buildProcess.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Docker build failed with exit code ${code}`));
       });
     });
 
     log("Build complete.\n");
-    // Give Docker engine time to index the freshly built image (TCP on Windows can lag).
-    await new Promise((r) => setTimeout(r, 5000));
-
-    log(`Verifying built image exists: ${imageTag}\n`);
-    await assertImageAvailable(docker, imageTag, { attempts: 3, delayMs: 1000, onLog: log });
 
     const existing = await containerExists(docker, safeName);
     if (existing?.Id) {
