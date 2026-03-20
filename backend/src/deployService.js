@@ -248,52 +248,20 @@ async function containerExists(docker, name) {
   return found || null;
 }
 
-async function assertImageAvailable(docker, imageName, { attempts = 3, delayMs = 1000, onLog } = {}) {
-  const log = (s = "") => {
-    try {
-      onLog?.(s);
-    } catch {}
-  };
-
-  let lastLen = 0;
+async function assertImageAvailable(docker, imageName, { attempts = 5, delayMs = 2000, onLog } = {}) {
+  const log = (s = "") => { try { onLog?.(s); } catch {} };
   for (let i = 0; i < attempts; i++) {
-    // Dockerode listImages supports reference filters (best effort).
-    // If TCP context differs, the image can appear missing briefly.
     try {
-      const images = await docker.listImages({ filters: { reference: [imageName] } });
-      lastLen = images?.length || 0;
-      if (lastLen > 0) return images;
-    } catch (e) {
-      log(`Image check failed (attempt ${i + 1}): ${e?.message || String(e)}\n`);
+      const img = docker.getImage(imageName);
+      await img.inspect();
+      log(`Image verified: ${imageName}\n`);
+      return true;
+    } catch {
+      log(`Image not ready yet (attempt ${i+1}/${attempts})...\n`);
+      await new Promise(r => setTimeout(r, delayMs));
     }
-    log(`Image not visible yet (attempt ${i + 1}/${attempts}). Waiting...\n`);
-    // eslint-disable-next-line no-await-in-loop
-    await new Promise((r) => setTimeout(r, delayMs));
   }
-
-  // Final descriptive failure + optional run sanity check.
-  let runOk = false;
-  try {
-    // Sanity-check: if the image is runnable but listImages filters don't match,
-    // we can still make progress. This command exits immediately.
-    await docker.run(
-      imageName,
-      ["sh", "-c", "true"],
-      null,
-      { HostConfig: { AutoRemove: true } },
-      {},
-    );
-    runOk = true;
-    log(`docker.run sanity check succeeded for ${imageName}.\n`);
-  } catch (e) {
-    log(`docker.run sanity check failed: ${e?.message || String(e)}\n`);
-  }
-
-  if (runOk) return;
-
-  throw new Error(
-    `Image ${imageName} was built but not found. Docker TCP context mismatch or image indexing delay. (Matches: ${lastLen})`
-  );
+  throw new Error(`Image ${imageName} not found after build.`);
 }
 
 async function deployToDocker({
