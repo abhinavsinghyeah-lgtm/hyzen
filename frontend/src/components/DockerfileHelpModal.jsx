@@ -46,12 +46,16 @@ export default function DockerfileHelpModal({ open, onClose }) {
 
   if (!open) return null;
 
-  function copy(idx) {
-    navigator.clipboard.writeText(EXAMPLES[idx].code).then(() => {
-      setCopiedIdx(idx);
-      setTimeout(() => setCopiedIdx(null), 2000);
-    });
-  }
+function copy(idx) {
+  const el = document.createElement("textarea");
+  el.value = EXAMPLES[idx].code;
+  document.body.appendChild(el);
+  el.select();
+  document.execCommand("copy");
+  document.body.removeChild(el);
+  setCopiedIdx(idx);
+  setTimeout(() => setCopiedIdx(null), 2000);
+}
 
   return (
     <div
@@ -175,17 +179,25 @@ export default function DockerfileHelpModal({ open, onClose }) {
             </pre>
           </div>
 
-          <div
-            className="rounded-xl border px-4 py-3 text-xs"
-            style={{
-              backgroundColor: `${brand.primaryColor}08`,
-              borderColor: `${brand.primaryColor}22`,
-              color: brand.textMuted,
-              lineHeight: 1.6,
-            }}
-          >
-            💡 Save the file as <code style={{ color: brand.textPrimary }}>Dockerfile</code> (no extension) in your repo root, then push and redeploy.
-          </div>
+<div
+  className="rounded-xl border px-4 py-3 text-xs space-y-2"
+  style={{
+    backgroundColor: `${brand.primaryColor}08`,
+    borderColor: `${brand.primaryColor}22`,
+    color: brand.textMuted,
+    lineHeight: 1.6,
+  }}
+>
+  <div>💡 Save as <code style={{ color: brand.textPrimary }}>Dockerfile</code> (no extension) in your repo root, then push and redeploy.</div>
+  <div>⚙️ Change the last line to match how your app starts:</div>
+  <div className="space-y-1 mt-1">
+    <div><code style={{ color: brand.terminalText }}>CMD ["node", "index.js"]</code> <span>→ if your entry file is index.js</span></div>
+    <div><code style={{ color: brand.terminalText }}>CMD ["node", "server.js"]</code> <span>→ if your entry file is server.js</span></div>
+    <div><code style={{ color: brand.terminalText }}>CMD ["npm", "start"]</code> <span>→ if you have a start script in package.json</span></div>
+    <div><code style={{ color: brand.terminalText }}>CMD ["npm", "run", "dev"]</code> <span>→ for dev mode (not recommended)</span></div>
+  </div>
+  <div>⚠️ Also update <code style={{ color: brand.textPrimary }}>EXPOSE</code> to match your app's port.</div>
+</div>
         </div>
 
         {/* Footer */}

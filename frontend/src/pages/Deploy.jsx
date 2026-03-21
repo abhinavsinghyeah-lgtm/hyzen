@@ -91,7 +91,6 @@ export default function Deploy() {
 
     setOutput(accRef.current);
 if (accRef.current.includes("No Dockerfile found")) {
-  alert("TRIGGER");
   setShowDockerfileHelp(true);
 }
     } catch (err) {
