@@ -1,7 +1,9 @@
-﻿const express = require("express");
-const router = express.Router();
+const express = require("express");
 const { getPool } = require("../db");
-const { deployProcess } = require("../deployService");
+const { invalidate } = require("../containersCache");
+const { deployProcess, envInputToPairs } = require("../deployService");
+
+const router = express.Router();
 
 function getPublicBaseUrl(req) {
   const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "http")
@@ -30,41 +32,49 @@ router.post("/", async (req, res) => {
   try {
     const result = await deployProcess({
       repoUrl,
-      branch,
+      branch: branch || null,
       containerName,
       env,
       buildCmd,
       startCmd,
       publicBaseUrl: getPublicBaseUrl(req),
-      onLog: (s) => { try { res.write(s); } catch {} },
+      onLog: (s) => {
+        try {
+          res.write(s);
+        } catch {}
+      },
     });
 
-    // Save to DB (best effort).
-    try {
-      const pool = getPool();
-      await pool.query(
-        `INSERT INTO hyzen_deployments
-           (repo_url, branch, container_name, status, output, url, pid, work_dir, log_file, start_cmd)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [
-          repoUrl,
-          result.usedBranch,
-          result.safeName,
-          "running",
-          "deployed",
-          result.url,
-          result.pid,
-          result.workDir,
-          result.logFile,
-          result.startCmd,
-        ]
-      );
-    } catch {}
+    const pool = getPool();
+    const envPairs = envInputToPairs(env);
+    await pool.query(
+      `INSERT INTO hyzen_deployments
+         (repo_url, branch, container_name, status, url, pid, work_dir, log_file, start_cmd, build_cmd, env_vars, suspended)
+       VALUES
+         ($1, $2, $3, 'running', $4, $5, $6, $7, $8, $9, $10, FALSE)`,
+      [
+        repoUrl,
+        result.usedBranch || branch || "main",
+        result.safeName,
+        result.url,
+        result.pid,
+        result.workDir,
+        result.logFile,
+        result.startCmd,
+        buildCmd || null,
+        envPairs || [],
+      ]
+    );
 
+    invalidate();
     res.end();
   } catch (err) {
-    try { res.write(`\nDeployment failed: ${err?.message || String(err)}\n`); } catch {}
-    try { res.end(); } catch {}
+    try {
+      res.write(`\nDeployment failed: ${err?.message || String(err)}\n`);
+    } catch {}
+    try {
+      res.end();
+    } catch {}
   }
 });
 

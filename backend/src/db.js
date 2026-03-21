@@ -40,11 +40,22 @@ async function initDb() {
   await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS work_dir TEXT;`);
   await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS log_file TEXT;`);
   await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS start_cmd TEXT;`);
+  await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS build_cmd TEXT;`);
+  await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS env_vars JSONB;`);
+  await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS suspended BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS suspended_reason TEXT;`);
 
   await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS pid INTEGER;`);
   await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS work_dir TEXT;`);
   await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS log_file TEXT;`);
   await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS start_cmd TEXT;`);
+  await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS container_id TEXT;`);
+  await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS repo_url TEXT;`);
+  await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS branch TEXT;`);
+  await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS build_cmd TEXT;`);
+  await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS suspended BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS suspended_reason TEXT;`);
+  await pool.query(`ALTER TABLE user_containers ALTER COLUMN container_id DROP NOT NULL;`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
@@ -53,16 +64,21 @@ async function initDb() {
       password TEXT NOT NULL,
       name TEXT NOT NULL,
       plan TEXT NOT NULL DEFAULT 'free',
+      is_suspended BOOLEAN NOT NULL DEFAULT FALSE,
+      suspended_reason TEXT,
       plan_expires_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
 
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_suspended BOOLEAN NOT NULL DEFAULT FALSE;`);
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_reason TEXT;`);
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS user_containers (
       id SERIAL PRIMARY KEY,
       user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      container_id TEXT NOT NULL,
+      container_id TEXT,
       name TEXT NOT NULL,
       url TEXT,
       ram TEXT,

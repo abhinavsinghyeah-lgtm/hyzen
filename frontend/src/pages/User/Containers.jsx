@@ -8,6 +8,7 @@ import {
   ScrollText,
   Trash2,
   Settings as SettingsIcon,
+  SlidersHorizontal,
 } from "lucide-react";
 import { api } from "../../api.js";
 import { brand } from "../../config/brand.js";
@@ -64,6 +65,8 @@ function envPairsFromJson(envVars) {
 export default function UserContainers() {
   const navigate = useNavigate();
   const [containers, setContainers] = useState([]);
+  const [accountSuspended, setAccountSuspended] = useState(false);
+  const [accountSuspendedReason, setAccountSuspendedReason] = useState("");
   const [error, setError] = useState("");
   const [loadingId, setLoadingId] = useState(null);
 
@@ -78,6 +81,8 @@ export default function UserContainers() {
     try {
       const res = await api.getJson("/api/user/containers", { token });
       setContainers(res?.containers || []);
+      setAccountSuspended(Boolean(res?.account?.isSuspended));
+      setAccountSuspendedReason(res?.account?.suspensionReason || "Account is suspended by admin.");
     } catch (e) {
       setError(e?.message || "Failed to load containers");
     }
@@ -151,6 +156,12 @@ export default function UserContainers() {
         </div>
       ) : null}
 
+      {accountSuspended ? (
+        <div className="rounded-2xl border px-4 py-3" style={{ backgroundColor: `${brand.warningColor}12`, borderColor: `${brand.warningColor}55` }}>
+          <div style={{ color: brand.textPrimary, fontSize: 13, fontWeight: 600 }}>{accountSuspendedReason}</div>
+        </div>
+      ) : null}
+
       {empty ? (
         <div className="rounded-2xl border flex flex-col items-center justify-center text-center px-6 py-12 gap-3" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
           <Box size={22} style={{ color: brand.primaryColor }} />
@@ -221,7 +232,7 @@ export default function UserContainers() {
                             color: brand.textPrimary,
                             opacity: loadingId === c.id ? 0.6 : 1,
                           }}
-                          disabled={loadingId === c.id}
+                          disabled={loadingId === c.id || c.suspended || accountSuspended}
                           onClick={() => doAction(c.id, "start")}
                         >
                           <Play size={16} />
@@ -239,7 +250,7 @@ export default function UserContainers() {
                             color: brand.textPrimary,
                             opacity: loadingId === c.id ? 0.6 : 1,
                           }}
-                          disabled={loadingId === c.id}
+                          disabled={loadingId === c.id || c.suspended || accountSuspended}
                           onClick={() => doAction(c.id, "stop")}
                         >
                           <Square size={16} />
@@ -257,7 +268,7 @@ export default function UserContainers() {
                             color: brand.textPrimary,
                             opacity: loadingId === c.id ? 0.6 : 1,
                           }}
-                          disabled={loadingId === c.id}
+                          disabled={loadingId === c.id || c.suspended || accountSuspended}
                           onClick={() => doAction(c.id, "restart")}
                         >
                           <RotateCcw size={16} />
@@ -293,10 +304,28 @@ export default function UserContainers() {
                             color: brand.textMuted,
                             opacity: loadingId === c.id ? 0.6 : 1,
                           }}
-                          disabled={loadingId === c.id}
+                          disabled={loadingId === c.id || c.suspended || accountSuspended}
                           onClick={() => openEnvModal(c)}
                         >
                           <SettingsIcon size={16} />
+                        </button>
+                        <button
+                          type="button"
+                          title="Control"
+                          aria-label="Control"
+                          className="inline-flex items-center justify-center rounded-xl transition-all duration-200 cursor-pointer"
+                          style={{
+                            width: 34,
+                            height: 34,
+                            border: `1px solid ${brand.border}`,
+                            backgroundColor: "transparent",
+                            color: brand.textMuted,
+                            opacity: loadingId === c.id ? 0.6 : 1,
+                          }}
+                          disabled={loadingId === c.id}
+                          onClick={() => navigate(`/user/containers/${c.id}`)}
+                        >
+                          <SlidersHorizontal size={16} />
                         </button>
                         <button
                           type="button"
@@ -316,6 +345,11 @@ export default function UserContainers() {
                         >
                           <Trash2 size={16} />
                         </button>
+                        {c.suspended ? (
+                          <span style={{ color: brand.warningColor, fontSize: 12, marginLeft: 8 }}>
+                            Suspended
+                          </span>
+                        ) : null}
                       </div>
                     </td>
                   </tr>

@@ -1,0 +1,257 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { api, apiStream } from "../api.js";
+import { brand } from "../config/brand.js";
+
+function normalizeEnv(envVars) {
+  if (!envVars) return [];
+  if (Array.isArray(envVars)) return envVars;
+  if (typeof envVars === "object") {
+    return Object.entries(envVars).map(([key, value]) => ({ key, value }));
+  }
+  return [];
+}
+
+export default function AdminUserContainerControl() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const [deployOutput, setDeployOutput] = useState("");
+
+  const [owner, setOwner] = useState({ userName: "", userEmail: "" });
+  const [form, setForm] = useState({
+    containerName: "",
+    repoUrl: "",
+    branch: "main",
+    buildCmd: "",
+    startCmd: "",
+    env: [{ key: "", value: "" }],
+  });
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await api.getJson(`/api/admin/containers/${id}`);
+      const c = res?.container;
+      if (!c) throw new Error("Container not found");
+
+      setOwner({ userName: c.userName || "", userEmail: c.userEmail || "" });
+      setForm({
+        containerName: c.name || "",
+        repoUrl: c.repoUrl || "",
+        branch: c.branch || "main",
+        buildCmd: c.buildCmd || "",
+        startCmd: c.startCmd || "",
+        env: normalizeEnv(c.envVars).length ? normalizeEnv(c.envVars) : [{ key: "", value: "" }],
+      });
+
+      if (c.suspended) {
+        setInfo(c.suspendedReason || "This container is suspended.");
+      } else {
+        setInfo("");
+      }
+    } catch (e) {
+      setError(e?.message || "Failed to load container");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  function setField(k, v) {
+    setForm((prev) => ({ ...prev, [k]: v }));
+  }
+
+  function setEnvAt(idx, key, value) {
+    setForm((prev) => ({
+      ...prev,
+      env: prev.env.map((it, i) => (i === idx ? { ...it, [key]: value } : it)),
+    }));
+  }
+
+  function addEnv() {
+    setForm((prev) => ({ ...prev, env: [...prev.env, { key: "", value: "" }] }));
+  }
+
+  function removeEnv(idx) {
+    setForm((prev) => ({ ...prev, env: prev.env.filter((_, i) => i !== idx) }));
+  }
+
+  const cleanEnv = useMemo(
+    () => (form.env || []).filter((x) => String(x?.key || "").trim()),
+    [form.env]
+  );
+
+  async function saveConfig() {
+    setSaving(true);
+    setError("");
+    setInfo("");
+    try {
+      await api.request(`/api/admin/containers/${id}/config`, {
+        method: "PUT",
+        body: JSON.stringify({
+          containerName: form.containerName,
+          repoUrl: form.repoUrl,
+          branch: form.branch,
+          buildCmd: form.buildCmd,
+          startCmd: form.startCmd,
+          env: cleanEnv,
+        }),
+      });
+      setInfo("Container config saved.");
+      await load();
+    } catch (e) {
+      setError(e?.message || "Failed to save config");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function redeploy() {
+    setSaving(true);
+    setError("");
+    setInfo("");
+    setDeployOutput("");
+    try {
+      const res = await apiStream(`/api/admin/containers/${id}/redeploy`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          containerName: form.containerName,
+          repoUrl: form.repoUrl,
+          branch: form.branch,
+          buildCmd: form.buildCmd,
+          startCmd: form.startCmd,
+          env: cleanEnv,
+        }),
+      });
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No deploy output available");
+      const decoder = new TextDecoder();
+      let acc = "";
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const out = await reader.read();
+        if (out.done) break;
+        acc += decoder.decode(out.value, { stream: true });
+        setDeployOutput(acc);
+      }
+
+      setInfo("Redeploy finished.");
+      await load();
+    } catch (e) {
+      setError(e?.message || "Redeploy failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function toggleSuspend() {
+    setSaving(true);
+    setError("");
+    setInfo("");
+    try {
+      const detail = await api.getJson(`/api/admin/containers/${id}`);
+      const isSuspended = Boolean(detail?.container?.suspended);
+      await api.request(`/api/admin/containers/${id}/${isSuspended ? "unsuspend" : "suspend"}`, { method: "POST" });
+      await load();
+    } catch (e) {
+      setError(e?.message || "Failed to update suspension");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="rounded-2xl border p-4" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
+        <div style={{ color: brand.textMuted }}>Loading container...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="text-2xl font-bold" style={{ color: brand.textPrimary }}>User Server Control</div>
+        <div className="text-sm mt-1" style={{ color: brand.textMuted }}>
+          Owner: {owner.userName || "-"} ({owner.userEmail || "-"})
+        </div>
+      </div>
+
+      {error ? (
+        <div className="rounded-2xl border px-4 py-3" style={{ backgroundColor: `${brand.offlineColor}12`, borderColor: `${brand.offlineColor}55` }}>
+          <div style={{ color: brand.textPrimary, fontWeight: 600, fontSize: 13 }}>{error}</div>
+        </div>
+      ) : null}
+
+      {info ? (
+        <div className="rounded-2xl border px-4 py-3" style={{ backgroundColor: `${brand.primaryColor}10`, borderColor: `${brand.primaryColor}55` }}>
+          <div style={{ color: brand.textPrimary, fontWeight: 600, fontSize: 13 }}>{info}</div>
+        </div>
+      ) : null}
+
+      <div className="rounded-2xl border p-5 space-y-4" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label className="space-y-2">
+            <div style={{ color: brand.textMuted, fontSize: 12, fontWeight: 700 }}>App Name</div>
+            <input value={form.containerName} onChange={(e) => setField("containerName", e.target.value)} className="w-full rounded-xl px-4 py-3 outline-none" style={{ backgroundColor: brand.inputBg, border: `1px solid ${brand.inputBorder}`, color: brand.textPrimary }} />
+          </label>
+          <label className="space-y-2">
+            <div style={{ color: brand.textMuted, fontSize: 12, fontWeight: 700 }}>Branch</div>
+            <input value={form.branch} onChange={(e) => setField("branch", e.target.value)} className="w-full rounded-xl px-4 py-3 outline-none" style={{ backgroundColor: brand.inputBg, border: `1px solid ${brand.inputBorder}`, color: brand.textPrimary }} />
+          </label>
+        </div>
+
+        <label className="space-y-2 block">
+          <div style={{ color: brand.textMuted, fontSize: 12, fontWeight: 700 }}>Repository URL</div>
+          <input value={form.repoUrl} onChange={(e) => setField("repoUrl", e.target.value)} className="w-full rounded-xl px-4 py-3 outline-none" style={{ backgroundColor: brand.inputBg, border: `1px solid ${brand.inputBorder}`, color: brand.textPrimary }} />
+        </label>
+
+        <label className="space-y-2 block">
+          <div style={{ color: brand.textMuted, fontSize: 12, fontWeight: 700 }}>Build Command</div>
+          <input value={form.buildCmd} onChange={(e) => setField("buildCmd", e.target.value)} className="w-full rounded-xl px-4 py-3 outline-none" style={{ backgroundColor: brand.inputBg, border: `1px solid ${brand.inputBorder}`, color: brand.textPrimary }} />
+        </label>
+
+        <label className="space-y-2 block">
+          <div style={{ color: brand.textMuted, fontSize: 12, fontWeight: 700 }}>Start Command</div>
+          <input value={form.startCmd} onChange={(e) => setField("startCmd", e.target.value)} className="w-full rounded-xl px-4 py-3 outline-none" style={{ backgroundColor: brand.inputBg, border: `1px solid ${brand.inputBorder}`, color: brand.textPrimary }} />
+        </label>
+
+        <div className="space-y-2">
+          <div style={{ color: brand.textMuted, fontSize: 12, fontWeight: 700 }}>Environment Variables</div>
+          {form.env.map((item, idx) => (
+            <div key={idx} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_44px] gap-2">
+              <input value={item.key} onChange={(e) => setEnvAt(idx, "key", e.target.value)} className="rounded-xl px-4 py-2 outline-none" style={{ backgroundColor: brand.inputBg, border: `1px solid ${brand.inputBorder}`, color: brand.textPrimary }} placeholder="KEY" />
+              <input value={item.value} onChange={(e) => setEnvAt(idx, "value", e.target.value)} className="rounded-xl px-4 py-2 outline-none" style={{ backgroundColor: brand.inputBg, border: `1px solid ${brand.inputBorder}`, color: brand.textPrimary }} placeholder="VALUE" />
+              <button type="button" className="rounded-xl" style={{ backgroundColor: "transparent", border: `1px solid ${brand.border}`, color: brand.textMuted }} onClick={() => removeEnv(idx)}>X</button>
+            </div>
+          ))}
+          <button type="button" className="rounded-xl px-4 py-2" style={{ backgroundColor: `${brand.primaryColor}15`, border: `1px solid ${brand.primaryColor}55`, color: brand.primaryColor }} onClick={addEnv}>Add Env</button>
+        </div>
+
+        <div className="flex flex-wrap gap-3 pt-2">
+          <button type="button" disabled={saving} className="rounded-xl px-5 py-2 font-semibold" style={{ backgroundColor: brand.primaryColor, border: `1px solid ${brand.primaryColor}`, color: brand.darkBg, opacity: saving ? 0.7 : 1 }} onClick={saveConfig}>Save Config</button>
+          <button type="button" disabled={saving} className="rounded-xl px-5 py-2 font-semibold" style={{ backgroundColor: `${brand.primaryColor}20`, border: `1px solid ${brand.primaryColor}55`, color: brand.primaryColor, opacity: saving ? 0.7 : 1 }} onClick={redeploy}>Redeploy Latest Commit</button>
+          <button type="button" disabled={saving} className="rounded-xl px-5 py-2 font-semibold" style={{ backgroundColor: "transparent", border: `1px solid ${brand.border}`, color: brand.textMuted }} onClick={toggleSuspend}>Suspend or Unsuspend</button>
+          <button type="button" disabled={saving} className="rounded-xl px-5 py-2 font-semibold" style={{ backgroundColor: "transparent", border: `1px solid ${brand.border}`, color: brand.textMuted }} onClick={() => navigate("/admin/containers")}>Back</button>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border p-4" style={{ backgroundColor: brand.terminalBg, borderColor: brand.border }}>
+        <div style={{ color: brand.textMuted, fontSize: 12, marginBottom: 8 }}>Redeploy Output</div>
+        <pre className="whitespace-pre-wrap text-xs" style={{ color: brand.terminalText, minHeight: 160 }}>{deployOutput || "No output yet."}</pre>
+      </div>
+    </div>
+  );
+}

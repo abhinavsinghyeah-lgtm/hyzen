@@ -10,6 +10,9 @@ import Deploy from "./pages/Deploy.jsx";
 import Logs from "./pages/Logs.jsx";
 import Settings from "./pages/Settings.jsx";
 import Users from "./pages/Users.jsx";
+import ContainerControl from "./pages/ContainerControl.jsx";
+import AdminUserContainers from "./pages/AdminUserContainers.jsx";
+import AdminUserContainerControl from "./pages/AdminUserContainerControl.jsx";
 
 import UserLogin from "./pages/User/Login.jsx";
 import UserRegister from "./pages/User/Register.jsx";
@@ -19,6 +22,7 @@ import UserDeploy from "./pages/User/Deploy.jsx";
 import UserLogs from "./pages/User/Logs.jsx";
 import UserBilling from "./pages/User/Billing.jsx";
 import UserSettings from "./pages/User/Settings.jsx";
+import UserContainerControl from "./pages/User/ContainerControl.jsx";
 
 function RequireAdminAuth({ children }) {
   const token = localStorage.getItem("hyzen_jwt");
@@ -93,6 +97,16 @@ export default function App() {
         }
       />
       <Route
+        path="/containers/:id"
+        element={
+          <RequireAdminAuth>
+            <ProtectedAdminLayout>
+              <ContainerControl />
+            </ProtectedAdminLayout>
+          </RequireAdminAuth>
+        }
+      />
+      <Route
         path="/deploy"
         element={
           <RequireAdminAuth>
@@ -133,6 +147,26 @@ export default function App() {
           </RequireAdminAuth>
         }
       />
+      <Route
+        path="/admin/containers"
+        element={
+          <RequireAdminAuth>
+            <ProtectedAdminLayout>
+              <AdminUserContainers />
+            </ProtectedAdminLayout>
+          </RequireAdminAuth>
+        }
+      />
+      <Route
+        path="/admin/containers/:id"
+        element={
+          <RequireAdminAuth>
+            <ProtectedAdminLayout>
+              <AdminUserContainerControl />
+            </ProtectedAdminLayout>
+          </RequireAdminAuth>
+        }
+      />
 
       <Route
         path="/user/dashboard"
@@ -150,6 +184,16 @@ export default function App() {
           <RequireUserAuth>
             <ProtectedUserLayout>
               <UserContainers />
+            </ProtectedUserLayout>
+          </RequireUserAuth>
+        }
+      />
+      <Route
+        path="/user/containers/:id"
+        element={
+          <RequireUserAuth>
+            <ProtectedUserLayout>
+              <UserContainerControl />
             </ProtectedUserLayout>
           </RequireUserAuth>
         }

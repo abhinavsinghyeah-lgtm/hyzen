@@ -7,6 +7,7 @@ import {
   RotateCcw,
   ScrollText,
   Trash2,
+  SlidersHorizontal,
 } from "lucide-react";
 import { api } from "../api.js";
 import { brand } from "../config/brand.js";
@@ -251,6 +252,25 @@ export default function Containers() {
                           onClick={() => navigate("/logs", { state: { containerId: c.id } })}
                         >
                           <ScrollText size={16} />
+                        </button>
+
+                        <button
+                          type="button"
+                          title="Control"
+                          aria-label="Control"
+                          className="inline-flex items-center justify-center rounded-xl transition-all duration-200 cursor-pointer"
+                          style={{
+                            width: 34,
+                            height: 34,
+                            border: `1px solid ${brand.border}`,
+                            backgroundColor: "transparent",
+                            color: brand.textMuted,
+                            opacity: loadingId === c.id ? 0.6 : 1,
+                          }}
+                          disabled={loadingId === c.id}
+                          onClick={() => navigate(`/containers/${c.id}`)}
+                        >
+                          <SlidersHorizontal size={16} />
                         </button>
 
                         <ActionIconButton

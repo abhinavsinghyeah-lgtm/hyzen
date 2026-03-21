@@ -9,6 +9,7 @@ import {
   HelpCircle,
   BookOpen,
   Users,
+  Server,
 } from "lucide-react";
 import { brand } from "../config/brand.js";
 
@@ -19,6 +20,7 @@ const navItems = [
   { label: "Logs", to: "/logs", Icon: ScrollText },
   { label: "Settings", to: "/settings", Icon: Settings },
   { label: "Users", to: "/users", Icon: Users },
+  { label: "User Servers", to: "/admin/containers", Icon: Server },
 ];
 
 function getInitials(name) {

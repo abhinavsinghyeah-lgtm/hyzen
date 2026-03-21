@@ -67,6 +67,14 @@ export default function UserDashboard() {
         </div>
       ) : null}
 
+      {me?.account?.isSuspended ? (
+        <div className="rounded-2xl border px-4 py-3" style={{ backgroundColor: `${brand.warningColor}12`, borderColor: `${brand.warningColor}55` }}>
+          <div style={{ color: brand.textPrimary, fontSize: 13, fontWeight: 600 }}>
+            {me?.account?.suspensionReason || "Your account is suspended by admin. Deploy and runtime actions are disabled."}
+          </div>
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="rounded-2xl border p-5" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
           <div className="flex items-center justify-between gap-3">

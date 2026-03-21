@@ -7,7 +7,7 @@ const fs = require("fs");
 const { requireUser } = require("../middleware/auth");
 const config = require("../config");
 const { getPool } = require("../db");
-const { deployProcess, rerunProcess, killProcess, isPidRunning, envInputToPairs, buildEnvObject } = require("../deployService");
+const { deployProcess, rerunProcess, killProcess, isPidRunning, envInputToPairs } = require("../deployService");
 const { invalidate } = require("../containersCache");
 
 const router = express.Router();
@@ -43,6 +43,41 @@ async function getContainerCount(pool, userId) {
     [userId]
   );
   return r.rows[0]?.count || 0;
+}
+
+async function getUserAccessState(pool, userId) {
+  const r = await pool.query(
+    `SELECT is_suspended, suspended_reason FROM users WHERE id = $1;`,
+    [userId]
+  );
+  const row = r.rows[0] || {};
+  return {
+    isSuspended: Boolean(row.is_suspended),
+    reason: row.suspended_reason || "Your account is suspended by admin.",
+  };
+}
+
+function sanitizeConfigInput(body = {}) {
+  const next = {};
+  if (typeof body.containerName === "string") {
+    next.containerName = body.containerName.trim();
+  }
+  if (typeof body.repoUrl === "string") {
+    next.repoUrl = body.repoUrl.trim();
+  }
+  if (typeof body.branch === "string") {
+    next.branch = body.branch.trim();
+  }
+  if (typeof body.buildCmd === "string") {
+    next.buildCmd = body.buildCmd.trim();
+  }
+  if (typeof body.startCmd === "string") {
+    next.startCmd = body.startCmd.trim();
+  }
+  if (body.env != null) {
+    next.env = envInputToPairs(body.env);
+  }
+  return next;
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -86,7 +121,6 @@ router.post("/login", async (req, res) => {
 
     const ok = await bcrypt.compare(password, user.password);
     if (!ok) return res.status(401).json({ message: "Invalid credentials" });
-
     const jwt = require("jsonwebtoken");
     const token = jwt.sign(
       { sub: user.id, role: "user", email: user.email },
@@ -105,7 +139,7 @@ router.get("/me", requireUser, async (req, res) => {
     const pool = getPool();
     const userId = req.user.sub;
     const u = await pool.query(
-      `SELECT id, email, name, plan, plan_expires_at FROM users WHERE id = $1;`,
+      `SELECT id, email, name, plan, plan_expires_at, is_suspended, suspended_reason FROM users WHERE id = $1;`,
       [userId]
     );
     const user = u.rows[0];
@@ -118,6 +152,10 @@ router.get("/me", requireUser, async (req, res) => {
 
     return res.json({
       profile: { id: user.id, email: user.email, name: user.name },
+      account: {
+        isSuspended: Boolean(user.is_suspended),
+        suspensionReason: user.suspended_reason || null,
+      },
       plan: { ...planMeta, key: plan, daysRemaining: days },
       containersUsed,
       containersAllowed: planMeta.containers,
@@ -134,8 +172,11 @@ router.get("/containers", requireUser, async (req, res) => {
     const pool = getPool();
     const userId = req.user.sub;
 
+    const access = await getUserAccessState(pool, userId);
+
     const { rows } = await pool.query(
-      `SELECT id, name, url, status, pid, work_dir, log_file, start_cmd, env_vars, created_at
+      `SELECT id, name, url, status, pid, work_dir, log_file, start_cmd, build_cmd,
+              repo_url, branch, env_vars, suspended, suspended_reason, created_at
        FROM user_containers
        WHERE user_id = $1
        ORDER BY created_at DESC;`,
@@ -145,12 +186,24 @@ router.get("/containers", requireUser, async (req, res) => {
     const results = rows.map((r) => ({
       id: r.id,
       name: r.name,
+      repoUrl: r.repo_url || null,
+      branch: r.branch || null,
       status: r.pid && isPidRunning(r.pid) ? "running" : "stopped",
       url: r.url || null,
+      buildCmd: r.build_cmd || "",
+      startCmd: r.start_cmd || "",
+      suspended: Boolean(r.suspended) || access.isSuspended,
+      suspendedReason: r.suspended_reason || (access.isSuspended ? access.reason : null),
       envVars: r.env_vars || [],
     }));
 
-    return res.json({ containers: results });
+    return res.json({
+      account: {
+        isSuspended: access.isSuspended,
+        suspensionReason: access.reason,
+      },
+      containers: results,
+    });
   } catch {
     return res.status(500).json({ message: "Failed to load containers" });
   }
@@ -172,6 +225,14 @@ router.post("/deploy", requireUser, async (req, res) => {
   const pool = getPool();
 
   try {
+    const access = await getUserAccessState(pool, userId);
+    if (access.isSuspended) {
+      res.status(403);
+      res.write(`${access.reason}\n`);
+      res.end();
+      return;
+    }
+
     const u = await pool.query(`SELECT plan, plan_expires_at FROM users WHERE id = $1;`, [userId]);
     const user = u.rows[0];
     const planKey = user?.plan || "free";
@@ -205,10 +266,11 @@ router.post("/deploy", requireUser, async (req, res) => {
 
     await pool.query(
       `INSERT INTO user_containers
-         (user_id, name, url, status, pid, work_dir, log_file, start_cmd, env_vars)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
+         (user_id, container_id, name, url, status, pid, work_dir, log_file, start_cmd, build_cmd, repo_url, branch, env_vars, suspended)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, FALSE);`,
       [
         userId,
+        result.safeName,
         result.safeName,
         result.url,
         "running",
@@ -216,7 +278,10 @@ router.post("/deploy", requireUser, async (req, res) => {
         result.workDir,
         result.logFile,
         result.startCmd,
-        env || [],
+        buildCmd || null,
+        repoUrl,
+        result.usedBranch || branch || "main",
+        envInputToPairs(env),
       ]
     );
 
@@ -227,16 +292,61 @@ router.post("/deploy", requireUser, async (req, res) => {
   }
 });
 
-router.post("/containers/:id/start", requireUser, async (req, res) => {
+router.get("/containers/:id", requireUser, async (req, res) => {
   try {
     const pool = getPool();
     const userId = req.user.sub;
+    const access = await getUserAccessState(pool, userId);
+
     const { rows } = await pool.query(
       `SELECT * FROM user_containers WHERE id = $1 AND user_id = $2;`,
       [req.params.id, userId]
     );
     const row = rows[0];
     if (!row) return res.status(404).json({ message: "Container not found" });
+
+    return res.json({
+      container: {
+        id: row.id,
+        name: row.name,
+        repoUrl: row.repo_url || "",
+        branch: row.branch || "main",
+        buildCmd: row.build_cmd || "",
+        startCmd: row.start_cmd || "",
+        envVars: row.env_vars || [],
+        workDir: row.work_dir || "",
+        logFile: row.log_file || "",
+        status: row.pid && isPidRunning(row.pid) ? "running" : "stopped",
+        url: row.url || null,
+        suspended: Boolean(row.suspended) || access.isSuspended,
+        suspendedReason: row.suspended_reason || (access.isSuspended ? access.reason : null),
+      },
+    });
+  } catch {
+    return res.status(500).json({ message: "Failed to load container" });
+  }
+});
+
+router.post("/containers/:id/start", requireUser, async (req, res) => {
+  try {
+    const pool = getPool();
+    const userId = req.user.sub;
+    const access = await getUserAccessState(pool, userId);
+    if (access.isSuspended) {
+      return res.status(403).json({ message: access.reason });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT * FROM user_containers WHERE id = $1 AND user_id = $2;`,
+      [req.params.id, userId]
+    );
+    const row = rows[0];
+    if (!row) return res.status(404).json({ message: "Container not found" });
+    if (row.suspended) {
+      return res.status(403).json({
+        message: row.suspended_reason || "Container is suspended by admin.",
+      });
+    }
     if (isPidRunning(row.pid)) return res.json({ ok: true, message: "Already running" });
 
     const { pid, url } = await rerunProcess({
@@ -271,7 +381,7 @@ router.post("/containers/:id/stop", requireUser, async (req, res) => {
 
     killProcess(row.pid);
     await pool.query(
-      `UPDATE user_containers SET status = 'stopped' WHERE id = $1;`,
+      `UPDATE user_containers SET status = 'stopped', pid = NULL WHERE id = $1;`,
       [req.params.id]
     );
     invalidate();
@@ -285,12 +395,22 @@ router.post("/containers/:id/restart", requireUser, async (req, res) => {
   try {
     const pool = getPool();
     const userId = req.user.sub;
+    const access = await getUserAccessState(pool, userId);
+    if (access.isSuspended) {
+      return res.status(403).json({ message: access.reason });
+    }
+
     const { rows } = await pool.query(
       `SELECT * FROM user_containers WHERE id = $1 AND user_id = $2;`,
       [req.params.id, userId]
     );
     const row = rows[0];
     if (!row) return res.status(404).json({ message: "Container not found" });
+    if (row.suspended) {
+      return res.status(403).json({
+        message: row.suspended_reason || "Container is suspended by admin.",
+      });
+    }
 
     killProcess(row.pid);
     await new Promise((r) => setTimeout(r, 600));
@@ -312,6 +432,163 @@ router.post("/containers/:id/restart", requireUser, async (req, res) => {
   } catch (err) {
     return res.status(500).json({ message: err?.message || "Failed to restart" });
   }
+});
+
+router.put("/containers/:id/config", requireUser, async (req, res) => {
+  try {
+    const pool = getPool();
+    const userId = req.user.sub;
+    const access = await getUserAccessState(pool, userId);
+    if (access.isSuspended) {
+      return res.status(403).json({ message: access.reason });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT * FROM user_containers WHERE id = $1 AND user_id = $2;`,
+      [req.params.id, userId]
+    );
+    const row = rows[0];
+    if (!row) return res.status(404).json({ message: "Container not found" });
+
+    const next = sanitizeConfigInput(req.body || {});
+    const updates = [];
+    const params = [];
+
+    if (next.containerName) {
+      updates.push(`name = $${updates.length + 1}`);
+      params.push(next.containerName.toLowerCase().replace(/[^a-z0-9-]/g, "-"));
+    }
+    if (next.repoUrl) {
+      updates.push(`repo_url = $${updates.length + 1}`);
+      params.push(next.repoUrl);
+    }
+    if (next.branch) {
+      updates.push(`branch = $${updates.length + 1}`);
+      params.push(next.branch);
+    }
+    if (Object.prototype.hasOwnProperty.call(next, "buildCmd")) {
+      updates.push(`build_cmd = $${updates.length + 1}`);
+      params.push(next.buildCmd || null);
+    }
+    if (Object.prototype.hasOwnProperty.call(next, "startCmd")) {
+      updates.push(`start_cmd = $${updates.length + 1}`);
+      params.push(next.startCmd || null);
+    }
+    if (Object.prototype.hasOwnProperty.call(next, "env")) {
+      updates.push(`env_vars = $${updates.length + 1}`);
+      params.push(next.env);
+    }
+
+    if (!updates.length) {
+      return res.status(400).json({ message: "Nothing to update" });
+    }
+
+    params.push(row.id);
+    await pool.query(
+      `UPDATE user_containers SET ${updates.join(", ")} WHERE id = $${updates.length + 1}`,
+      params
+    );
+
+    invalidate();
+    return res.json({ ok: true });
+  } catch (err) {
+    return res.status(500).json({ message: err?.message || "Failed to update container config" });
+  }
+});
+
+router.post("/containers/:id/redeploy", requireUser, async (req, res) => {
+  res.setHeader("Content-Type", "text/plain; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+
+  try {
+    const pool = getPool();
+    const userId = req.user.sub;
+    const access = await getUserAccessState(pool, userId);
+    if (access.isSuspended) {
+      res.status(403);
+      res.write(`${access.reason}\n`);
+      res.end();
+      return;
+    }
+
+    const { rows } = await pool.query(
+      `SELECT * FROM user_containers WHERE id = $1 AND user_id = $2;`,
+      [req.params.id, userId]
+    );
+    const row = rows[0];
+    if (!row) {
+      res.status(404).end("Container not found");
+      return;
+    }
+    if (row.suspended) {
+      res.status(403);
+      res.write(`${row.suspended_reason || "Container is suspended by admin."}\n`);
+      res.end();
+      return;
+    }
+
+    const override = sanitizeConfigInput(req.body || {});
+    const repoUrl = override.repoUrl || row.repo_url;
+    const branch = override.branch || row.branch || "main";
+    const containerName = override.containerName || row.name;
+    const buildCmd = Object.prototype.hasOwnProperty.call(override, "buildCmd") ? override.buildCmd : (row.build_cmd || "");
+    const startCmd = Object.prototype.hasOwnProperty.call(override, "startCmd") ? override.startCmd : (row.start_cmd || "");
+    const env = Object.prototype.hasOwnProperty.call(override, "env") ? override.env : (row.env_vars || []);
+
+    if (!repoUrl) {
+      res.status(400).end("Container missing repo_url; update config first");
+      return;
+    }
+
+    killProcess(row.pid);
+    await new Promise((r) => setTimeout(r, 600));
+
+    const result = await deployProcess({
+      repoUrl,
+      branch,
+      containerName,
+      env,
+      buildCmd,
+      startCmd,
+      publicBaseUrl: getPublicBaseUrl(req),
+      onLog: (s) => { try { res.write(s); } catch {} },
+    });
+
+    await pool.query(
+      `UPDATE user_containers
+       SET name = $1, repo_url = $2, branch = $3, build_cmd = $4, start_cmd = $5,
+           env_vars = $6, url = $7, pid = $8, work_dir = $9, log_file = $10, status = 'running'
+       WHERE id = $11`,
+      [
+        result.safeName,
+        repoUrl,
+        result.usedBranch || branch,
+        buildCmd || null,
+        result.startCmd,
+        envInputToPairs(env),
+        result.url,
+        result.pid,
+        result.workDir,
+        result.logFile,
+        row.id,
+      ]
+    );
+
+    invalidate();
+    res.end();
+  } catch (err) {
+    try {
+      res.write(`\nRedeploy failed: ${err?.message || String(err)}\n`);
+    } catch {}
+    try { res.end(); } catch {}
+  }
+});
+
+router.post("/containers/:id/redeploy-latest", requireUser, async (req, res) => {
+  return res.status(400).json({
+    message: "Use /containers/:id/redeploy for latest-commit redeploy.",
+  });
 });
 
 router.get("/containers/:id/logs", requireUser, async (req, res) => {
@@ -371,6 +648,11 @@ router.put("/containers/:id/env", requireUser, async (req, res) => {
   try {
     const pool = getPool();
     const userId = req.user.sub;
+    const access = await getUserAccessState(pool, userId);
+    if (access.isSuspended) {
+      return res.status(403).json({ message: access.reason });
+    }
+
     const { env } = req.body || {};
 
     const { rows } = await pool.query(
@@ -379,6 +661,11 @@ router.put("/containers/:id/env", requireUser, async (req, res) => {
     );
     const row = rows[0];
     if (!row) return res.status(404).json({ message: "Container not found" });
+    if (row.suspended) {
+      return res.status(403).json({
+        message: row.suspended_reason || "Container is suspended by admin.",
+      });
+    }
 
     const envPairs = envInputToPairs(env);
 

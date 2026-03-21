@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../api.js";
 import { brand } from "../config/brand.js";
 
@@ -10,6 +11,7 @@ function planLabel(plan) {
 }
 
 export default function Users() {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [users, setUsers] = useState([]);
@@ -49,6 +51,21 @@ export default function Users() {
     }
   }
 
+  async function toggleUserSuspension(userId, suspended) {
+    setSavingId(userId);
+    setError("");
+    try {
+      await api.request(`/api/admin/users/${userId}/${suspended ? "unsuspend" : "suspend"}`, {
+        method: "POST",
+      });
+      await load();
+    } catch (e) {
+      setError(e?.message || "Failed to update user suspension");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   if (loading) {
     return (
       <div className="rounded-2xl border p-4" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
@@ -82,7 +99,7 @@ export default function Users() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ color: brand.textMuted }}>
-                {["Email", "Plan", "Containers", "Joined", "Change Plan"].map((h) => (
+                {["Email", "Plan", "Containers", "Joined", "Controls"].map((h) => (
                   <th key={h} className="text-left px-5 py-3 font-semibold" style={{ borderBottom: `1px solid ${brand.border}` }}>
                     {h}
                   </th>
@@ -115,7 +132,7 @@ export default function Users() {
                       {u.joined_at ? new Date(u.joined_at).toLocaleDateString() : "—"}
                     </td>
                     <td className="px-5 py-4">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-wrap">
                         <select
                           value={u.plan}
                           onChange={(e) => setPlan(u.id, e.target.value)}
@@ -133,7 +150,38 @@ export default function Users() {
                             </option>
                           ))}
                         </select>
+                        <button
+                          type="button"
+                          className="rounded-xl px-3 py-2"
+                          style={{
+                            backgroundColor: "transparent",
+                            border: `1px solid ${u.is_suspended ? brand.onlineColor : brand.warningColor}`,
+                            color: u.is_suspended ? brand.onlineColor : brand.warningColor,
+                            opacity: savingId === u.id ? 0.7 : 1,
+                          }}
+                          disabled={savingId === u.id}
+                          onClick={() => toggleUserSuspension(u.id, Boolean(u.is_suspended))}
+                        >
+                          {u.is_suspended ? "Unsuspend" : "Suspend"}
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-xl px-3 py-2"
+                          style={{
+                            backgroundColor: "transparent",
+                            border: `1px solid ${brand.primaryColor}66`,
+                            color: brand.primaryColor,
+                          }}
+                          onClick={() => navigate("/admin/containers")}
+                        >
+                          View Servers
+                        </button>
                       </div>
+                      {u.is_suspended && u.suspended_reason ? (
+                        <div style={{ marginTop: 6, color: brand.warningColor, fontSize: 12 }}>
+                          {u.suspended_reason}
+                        </div>
+                      ) : null}
                     </td>
                   </tr>
                 ))
