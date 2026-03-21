@@ -121,7 +121,6 @@ function envInputToPairs(envInput) {
 
 function buildEnvObject(envPairs, port) {
   const obj = { ...process.env };
-  if (port != null) obj.PORT = String(port);
   for (const pair of envPairs) {
     const k = String(pair?.key || "")
       .trim()
@@ -130,7 +129,63 @@ function buildEnvObject(envPairs, port) {
       .toUpperCase();
     if (k) obj[k] = String(pair?.value ?? "");
   }
+  // Always force platform-assigned port last.
+  if (port != null) obj.PORT = String(port);
   return obj;
+}
+
+function listDirectories(rootDir, maxDepth = 2, depth = 0) {
+  if (depth > maxDepth) return [];
+  const out = [];
+  let entries = [];
+  try {
+    entries = fs.readdirSync(rootDir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    if (!e.isDirectory()) continue;
+    if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+    const p = path.join(rootDir, e.name);
+    out.push(p);
+    out.push(...listDirectories(p, maxDepth, depth + 1));
+  }
+  return out;
+}
+
+function scoreProjectDir(dir) {
+  let score = 0;
+  if (fs.existsSync(path.join(dir, "package.json"))) score += 10;
+  if (fs.existsSync(path.join(dir, "vite.config.js"))) score += 3;
+  if (fs.existsSync(path.join(dir, "next.config.js"))) score += 3;
+  if (fs.existsSync(path.join(dir, "angular.json"))) score += 3;
+  if (fs.existsSync(path.join(dir, "src"))) score += 1;
+  if (fs.existsSync(path.join(dir, "index.html"))) score += 1;
+  return score;
+}
+
+function detectProjectDir(cloneDir, requestedStartCmd) {
+  const cmd = String(requestedStartCmd || "").trim().toLowerCase();
+  const rootHasPkg = fs.existsSync(path.join(cloneDir, "package.json"));
+  if (rootHasPkg) return cloneDir;
+
+  const candidates = [cloneDir, ...listDirectories(cloneDir, 3)];
+
+  // If user requested npm/yarn/pnpm command, prefer a folder with package.json.
+  const pkgCommand = /^(npm|yarn|pnpm)\b/.test(cmd);
+  const scored = candidates
+    .map((d) => ({ dir: d, score: scoreProjectDir(d) }))
+    .filter((x) => x.score > 0)
+    .sort((a, b) => b.score - a.score || a.dir.length - b.dir.length);
+
+  if (!scored.length) return cloneDir;
+
+  if (pkgCommand) {
+    const withPkg = scored.find((x) => fs.existsSync(path.join(x.dir, "package.json")));
+    if (withPkg) return withPkg.dir;
+  }
+
+  return scored[0].dir;
 }
 
 // ─── Start command detection ──────────────────────────────────────────────────
@@ -335,12 +390,18 @@ async function deployProcess({
   // 1. Clone
   const usedBranch = await cloneRepo(repoUrl, cloneDir, branch, log);
 
+  // 1.5 Detect actual project directory (supports monorepos/subfolder apps)
+  const projectDir = detectProjectDir(cloneDir, startCmd);
+  if (projectDir !== cloneDir) {
+    log(`Detected project directory: ${path.relative(cloneDir, projectDir)}\n`);
+  }
+
   // 2. Build (auto-detected when omitted)
-  const effectiveBuildCmd = detectBuildCommand(cloneDir, buildCmd);
+  const effectiveBuildCmd = detectBuildCommand(projectDir, buildCmd);
   if (effectiveBuildCmd) {
     log(`\nRunning build: ${effectiveBuildCmd}\n`);
     await runShellCommand(effectiveBuildCmd, {
-      cwd: cloneDir,
+      cwd: projectDir,
       env: { ...process.env },
       log,
     });
@@ -350,7 +411,7 @@ async function deployProcess({
   }
 
   // 3. Detect / use start command
-  const effectiveStartCmd = (startCmd || "").trim() || detectStartCommand(cloneDir);
+  const effectiveStartCmd = (startCmd || "").trim() || detectStartCommand(projectDir);
   if (!effectiveStartCmd) {
     throw new Error(
       "Could not detect a start command. Provide one manually (for example: npm start or node server.js)."
@@ -372,7 +433,7 @@ async function deployProcess({
 
   const child = spawnApp({
     command: effectiveStartCmd,
-    cwd: cloneDir,
+    cwd: projectDir,
     env: processEnv,
     logFile,
   });
@@ -400,7 +461,7 @@ async function deployProcess({
     url,
     hostPort,
     pid: child.pid,
-    workDir: cloneDir,
+    workDir: projectDir,
     logFile,
     startCmd: effectiveStartCmd,
   };
