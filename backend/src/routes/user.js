@@ -24,6 +24,12 @@ function getPublicBaseUrl(req) {
   return `${proto}://${hostOnly}`;
 }
 
+function getAccessUrl(req, id) {
+  const base = getPublicBaseUrl(req);
+  if (!base) return `/service/user/${id}`;
+  return `${base}/service/user/${id}`;
+}
+
 function daysRemaining(planExpiresAt) {
   if (!planExpiresAt) return 0;
   const expires = new Date(planExpiresAt);
@@ -189,7 +195,7 @@ router.get("/containers", requireUser, async (req, res) => {
       repoUrl: r.repo_url || null,
       branch: r.branch || null,
       status: r.pid && isPidRunning(r.pid) ? "running" : "stopped",
-      url: r.url || null,
+      url: getAccessUrl(req, r.id),
       buildCmd: r.build_cmd || "",
       startCmd: r.start_cmd || "",
       suspended: Boolean(r.suspended) || access.isSuspended,
@@ -317,7 +323,7 @@ router.get("/containers/:id", requireUser, async (req, res) => {
         workDir: row.work_dir || "",
         logFile: row.log_file || "",
         status: row.pid && isPidRunning(row.pid) ? "running" : "stopped",
-        url: row.url || null,
+        url: getAccessUrl(req, row.id),
         suspended: Boolean(row.suspended) || access.isSuspended,
         suspendedReason: row.suspended_reason || (access.isSuspended ? access.reason : null),
       },

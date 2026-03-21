@@ -1,8 +1,12 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
+const http = require("http");
+const https = require("https");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 
-const { initDb } = require("./db");
+const { initDb, getPool } = require("./db");
 const authRoutes = require("./routes/auth");
 const containersRoutes = require("./routes/containers");
 const deployRoutes = require("./routes/deploy");
@@ -12,11 +16,205 @@ const adminRoutes = require("./routes/admin");
 const { requireAdmin } = require("./middleware/auth");
 
 const app = express();
-app.use(cors());
-app.use(express.json({ limit: "5mb" }));
+app.disable("x-powered-by");
+app.set("trust proxy", 1);
+
+const corsAllowList = String(process.env.CORS_ORIGIN || "")
+  .split(",")
+  .map((v) => v.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin(origin, cb) {
+      if (!origin || corsAllowList.length === 0 || corsAllowList.includes(origin)) {
+        cb(null, true);
+        return;
+      }
+      cb(new Error("CORS blocked"));
+    },
+    credentials: true,
+  })
+);
+
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  })
+);
+
+const apiLimiter = rateLimit({
+  windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000),
+  max: Number(process.env.RATE_LIMIT_MAX || 600),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const authLimiter = rateLimit({
+  windowMs: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 10 * 60 * 1000),
+  max: Number(process.env.AUTH_RATE_LIMIT_MAX || 20),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use(express.json({ limit: "1mb" }));
+app.use("/api", apiLimiter);
+app.use("/api/auth/login", authLimiter);
 
 const VPS_CACHE_MS = 3000;
 let vpsCache = { ts: 0, value: null };
+
+function suspendedHtml(message) {
+  const safe = String(message || "Your service has been suspended by HYZEN Administration, please contact for more info.")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Service Suspended</title>
+  <style>
+    :root { color-scheme: dark; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: radial-gradient(80% 80% at 20% 0%, #1a2736 0%, #0a1018 55%, #05080f 100%);
+      color: #e9f0fb;
+    }
+    .modal {
+      width: min(90vw, 560px);
+      background: rgba(12, 20, 33, 0.92);
+      border: 1px solid rgba(120, 154, 196, 0.24);
+      border-radius: 22px;
+      padding: 26px;
+      box-shadow: 0 30px 70px rgba(2, 8, 16, 0.55);
+      backdrop-filter: blur(8px);
+    }
+    .badge {
+      display: inline-flex;
+      padding: 6px 10px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .08em;
+      border-radius: 999px;
+      color: #ffb357;
+      border: 1px solid rgba(255, 179, 87, 0.35);
+      margin-bottom: 12px;
+    }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    p {
+      margin: 0;
+      color: #b6c4d7;
+      line-height: 1.55;
+      font-size: 15px;
+    }
+  </style>
+</head>
+<body>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Service suspended notice">
+    <div class="badge">SERVICE NOTICE</div>
+    <h1>Service Suspended</h1>
+    <p>${safe}</p>
+  </div>
+</body>
+</html>`;
+}
+
+app.use("/service/:scope/:id", async (req, res) => {
+  try {
+    const scope = String(req.params.scope || "").toLowerCase();
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).send("Invalid service id");
+    }
+
+    const pool = getPool();
+    let row = null;
+
+    if (scope === "admin") {
+      const r = await pool.query(
+        `SELECT url, pid, suspended, suspended_reason FROM hyzen_deployments WHERE id = $1`,
+        [id]
+      );
+      row = r.rows[0] || null;
+    } else if (scope === "user") {
+      const r = await pool.query(
+        `SELECT c.url, c.pid, c.suspended, c.suspended_reason, u.is_suspended, u.suspended_reason AS user_suspended_reason
+         FROM user_containers c
+         JOIN users u ON u.id = c.user_id
+         WHERE c.id = $1`,
+        [id]
+      );
+      row = r.rows[0] || null;
+      if (row && row.is_suspended) {
+        row.suspended = true;
+        row.suspended_reason = row.user_suspended_reason || row.suspended_reason;
+      }
+    } else {
+      return res.status(404).send("Service not found");
+    }
+
+    if (!row) {
+      return res.status(404).send("Service not found");
+    }
+
+    if (row.suspended) {
+      res.status(403).setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.end(suspendedHtml(row.suspended_reason || "Your service has been suspended by HYZEN Administration, please contact for more info."));
+    }
+
+    if (!row.url) {
+      return res.status(503).send("Service URL not available");
+    }
+
+    let target;
+    try {
+      target = new URL(row.url);
+    } catch {
+      return res.status(503).send("Service target is invalid");
+    }
+
+    const isHttps = target.protocol === "https:";
+    const client = isHttps ? https : http;
+    const targetPort = Number(target.port || (isHttps ? 443 : 80));
+
+    const proxyReq = client.request(
+      {
+        protocol: target.protocol,
+        hostname: target.hostname,
+        port: targetPort,
+        method: req.method,
+        path: req.url,
+        headers: {
+          ...req.headers,
+          host: target.host,
+        },
+      },
+      (proxyRes) => {
+        res.status(proxyRes.statusCode || 502);
+        for (const [k, v] of Object.entries(proxyRes.headers || {})) {
+          if (v != null) res.setHeader(k, v);
+        }
+        proxyRes.pipe(res);
+      }
+    );
+
+    proxyReq.on("error", () => {
+      if (!res.headersSent) res.status(502);
+      res.end("Service is unavailable");
+    });
+
+    req.pipe(proxyReq);
+  } catch {
+    res.status(500).send("Service proxy error");
+  }
+});
 
 app.use("/api/auth", authRoutes);
 

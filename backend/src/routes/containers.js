@@ -17,6 +17,12 @@ function getPublicBaseUrl(req) {
   return `${proto}://${hostOnly}`;
 }
 
+function getAccessUrl(req, id) {
+  const base = getPublicBaseUrl(req);
+  if (!base) return `/service/admin/${id}`;
+  return `${base}/service/admin/${id}`;
+}
+
 // ── GET / — list all deployments ─────────────────────────────────────────────
 router.get("/", async (req, res) => {
   try {
@@ -34,7 +40,7 @@ router.get("/", async (req, res) => {
         id: String(row.id),
         name: row.container_name || "",
         status: alive ? "running" : "stopped",
-        url: row.url || null,
+        url: getAccessUrl(req, row.id),
         pid: row.pid || null,
         workDir: row.work_dir || null,
         logFile: row.log_file || null,
@@ -75,7 +81,7 @@ router.get("/:id", async (req, res) => {
         startCmd: row.start_cmd || "",
         envVars: row.env_vars || [],
         status: row.pid && isPidRunning(row.pid) ? "running" : "stopped",
-        url: row.url || null,
+        url: getAccessUrl(req, row.id),
         suspended: Boolean(row.suspended),
         suspendedReason: row.suspended_reason || null,
       },

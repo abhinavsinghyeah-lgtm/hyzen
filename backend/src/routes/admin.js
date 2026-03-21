@@ -26,6 +26,12 @@ function getPublicBaseUrl(req) {
   return `${proto}://${hostOnly}`;
 }
 
+function getAccessUrl(req, id) {
+  const base = getPublicBaseUrl(req);
+  if (!base) return `/service/user/${id}`;
+  return `${base}/service/user/${id}`;
+}
+
 function sanitizeConfigInput(body = {}) {
   const next = {};
   if (typeof body.containerName === "string") next.containerName = body.containerName.trim();
@@ -178,7 +184,7 @@ router.get("/containers", requireAdmin, async (req, res) => {
         buildCmd: r.build_cmd || "",
         startCmd: r.start_cmd || "",
         status: r.pid && isPidRunning(r.pid) ? "running" : (r.status || "stopped"),
-        url: r.url || null,
+        url: getAccessUrl(req, r.id),
         suspended: Boolean(r.suspended) || Boolean(r.user_suspended),
         suspendedReason: r.suspended_reason || null,
         createdAt: r.created_at,
@@ -218,7 +224,7 @@ router.get("/containers/:id", requireAdmin, async (req, res) => {
         workDir: row.work_dir || "",
         logFile: row.log_file || "",
         status: row.pid && isPidRunning(row.pid) ? "running" : (row.status || "stopped"),
-        url: row.url || null,
+        url: getAccessUrl(req, row.id),
         suspended: Boolean(row.suspended) || Boolean(row.user_suspended),
         suspendedReason: row.suspended_reason || row.user_suspended_reason || null,
       },

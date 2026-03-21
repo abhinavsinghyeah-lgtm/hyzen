@@ -59,6 +59,16 @@ export async function apiLogin({ username, password }) {
   return res.json();
 }
 
+export function adminLogout() {
+  localStorage.removeItem("hyzen_jwt");
+  window.location.href = "/login";
+}
+
+export function userLogout() {
+  localStorage.removeItem("hyzen_user_jwt");
+  window.location.href = "/user/login";
+}
+
 export const api = {
   API_BASE_URL,
   getJson,

@@ -10,8 +10,10 @@ import {
   BookOpen,
   Users,
   Server,
+  LogOut,
 } from "lucide-react";
 import { brand } from "../config/brand.js";
+import { adminLogout } from "../api.js";
 
 const navItems = [
   { label: "Overview", to: "/overview", Icon: LayoutDashboard },
@@ -135,6 +137,23 @@ export default function Sidebar() {
         </div>
 
         <div className="flex-1" />
+
+        <div className="flex flex-col gap-1">
+          <button
+            onClick={adminLogout}
+            className="rounded-xl transition-all duration-200 cursor-pointer flex items-center gap-3 px-3 py-3 w-full text-left"
+            style={{
+              color: brand.textMuted,
+              backgroundColor: hoveredTo === "logout" ? "rgba(23,38,57,0.58)" : "transparent",
+              border: "1px solid transparent",
+            }}
+            onMouseEnter={() => setHoveredTo("logout")}
+            onMouseLeave={() => setHoveredTo(null)}
+          >
+            <LogOut size={18} />
+            <span className="text-sm font-medium">Logout</span>
+          </button>
+        </div>
 
         <div className="pb-7">
           <div className="flex items-center gap-3 px-1">

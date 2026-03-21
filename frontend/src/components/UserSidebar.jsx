@@ -7,8 +7,9 @@ import {
   ScrollText,
   Settings,
   CreditCard,
+  LogOut,
 } from "lucide-react";
-import { api } from "../api.js";
+import { api, userLogout } from "../api.js";
 import { brand } from "../config/brand.js";
 
 function getInitials(name) {
