@@ -38,25 +38,30 @@ export default function Sidebar() {
     <aside
       className="transition-all duration-200 hyzen-sidebar"
       style={{
-        width: 220,
-        backgroundImage: brand.sidebarBg,
-        borderRight: `1px solid ${brand.border}`,
+        width: 244,
       }}
     >
-      <div className="relative h-full flex flex-col px-4 py-5">
+      <div
+        className="relative h-full flex flex-col px-4 py-5 hyzen-sidebar-shell"
+        style={{
+          backgroundImage: brand.sidebarBg,
+          borderColor: brand.border,
+        }}
+      >
         <div className="flex items-center gap-3 px-1">
           <div
-            className="rounded-xl"
+            className="rounded-full"
             style={{
-              width: 36,
-              height: 36,
-              backgroundImage: brand.accentGradient,
+              width: 28,
+              height: 28,
+              background: "#ff9d2e",
+              boxShadow: "0 0 0 3px rgba(255,157,46,0.1), 0 0 22px rgba(255,157,46,0.36)",
               border: `1px solid ${brand.border}`,
             }}
           />
           <div className="min-w-0">
             <div
-              className="font-semibold tracking-wide text-[15px] truncate"
+              className="font-bold tracking-wide text-[17px] truncate"
               style={{ color: brand.textPrimary }}
             >
               {brand.name}
@@ -69,13 +74,14 @@ export default function Sidebar() {
             <NavLink
               key={item.to}
               to={item.to}
-              className="rounded-2xl transition-all duration-200 cursor-pointer flex items-center gap-3 px-3 py-3"
+              className="rounded-xl transition-all duration-200 cursor-pointer flex items-center gap-3 px-3 py-3"
               style={({ isActive }) => {
                 return {
                   color: isActive ? brand.textPrimary : brand.textMuted,
                   backgroundImage: isActive ? brand.sidebarActiveBg : "none",
-                  borderLeft: isActive ? `3px solid ${brand.primaryColor}` : "3px solid transparent",
-                  backgroundColor: !isActive && hoveredTo === item.to ? brand.border : "transparent",
+                  border: isActive ? `1px solid rgba(255,157,46,0.38)` : `1px solid transparent`,
+                  boxShadow: isActive ? "0 8px 24px rgba(2,9,19,0.4)" : "none",
+                  backgroundColor: !isActive && hoveredTo === item.to ? "rgba(23,38,57,0.58)" : "transparent",
                 };
               }}
               onMouseEnter={() => setHoveredTo(item.to)}
@@ -96,10 +102,11 @@ export default function Sidebar() {
           <a
             href="#"
             onClick={(e) => e.preventDefault()}
-            className="rounded-2xl transition-all duration-200 cursor-pointer flex items-center gap-3 px-3 py-3"
+            className="rounded-xl transition-all duration-200 cursor-pointer flex items-center gap-3 px-3 py-3"
             style={{
               color: brand.textMuted,
-              backgroundColor: hoveredTo === "support" ? brand.border : "transparent",
+              backgroundColor: hoveredTo === "support" ? "rgba(23,38,57,0.58)" : "transparent",
+              border: "1px solid transparent",
             }}
             onMouseEnter={() => setHoveredTo("support")}
             onMouseLeave={() => setHoveredTo(null)}
@@ -111,10 +118,11 @@ export default function Sidebar() {
           <a
             href="#"
             onClick={(e) => e.preventDefault()}
-            className="rounded-2xl transition-all duration-200 cursor-pointer flex items-center gap-3 px-3 py-3"
+            className="rounded-xl transition-all duration-200 cursor-pointer flex items-center gap-3 px-3 py-3"
             style={{
               color: brand.textMuted,
-              backgroundColor: hoveredTo === "docs" ? brand.border : "transparent",
+              backgroundColor: hoveredTo === "docs" ? "rgba(23,38,57,0.58)" : "transparent",
+              border: "1px solid transparent",
             }}
             onMouseEnter={() => setHoveredTo("docs")}
             onMouseLeave={() => setHoveredTo(null)}
@@ -133,8 +141,8 @@ export default function Sidebar() {
               style={{
                 width: 34,
                 height: 34,
-                backgroundImage: brand.accentGradient,
-                color: brand.darkBg,
+                background: "#ff9d2e",
+                color: "#061220",
                 fontSize: 12,
                 border: `1px solid ${brand.border}`,
               }}

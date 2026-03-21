@@ -127,8 +127,11 @@ export default function Overview() {
   return (
     <div className="space-y-6">
       <div className="space-y-1">
+        <div className="inline-flex items-center px-3 py-1 rounded-full border" style={{ borderColor: `${brand.primaryColor}55`, color: brand.primaryColor, fontSize: 11, fontWeight: 700, letterSpacing: 0.8 }}>
+          CONTROL PLANE
+        </div>
         <div className="text-2xl font-bold" style={{ color: brand.textPrimary }}>
-          Hello, Admin 👋
+          Hello, Admin
         </div>
         <div className="text-sm" style={{ color: brand.textMuted }}>
           {counts.running} running • {counts.total} total containers
@@ -184,7 +187,7 @@ export default function Overview() {
           return (
             <div
               key={stat.key}
-              className="rounded-2xl border transition-all duration-200 cursor-pointer"
+              className="rounded-[22px] border transition-all duration-200 cursor-pointer"
               style={{
                 backgroundColor: brand.cardBg,
                 borderColor: brand.border,
@@ -212,8 +215,8 @@ export default function Overview() {
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
         <div
-          className="rounded-2xl border p-5 space-y-5"
-          style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}
+          className="rounded-[22px] border p-5 space-y-5"
+          style={{ backgroundColor: brand.cardBg, borderColor: brand.border, boxShadow: "0 16px 34px rgba(2, 9, 19, 0.36)" }}
         >
           <ProgressBar
             label="CPU"
@@ -234,7 +237,7 @@ export default function Overview() {
 
         <div className="space-y-4">
           <div
-            className="rounded-2xl border p-5"
+            className="rounded-[22px] border p-5"
             style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}
           >
             <div className="flex items-center justify-between gap-3">
@@ -251,7 +254,7 @@ export default function Overview() {
           </div>
 
           <div
-            className="rounded-2xl border p-5"
+            className="rounded-[22px] border p-5"
             style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}
           >
             <div className="text-sm font-semibold" style={{ color: brand.textPrimary }}>
@@ -264,9 +267,9 @@ export default function Overview() {
               type="button"
               className="mt-4 inline-flex items-center gap-2 rounded-2xl px-4 py-2 transition-all duration-200 cursor-pointer"
               style={{
-                backgroundColor: `${brand.primaryColor}15`,
-                border: `1px solid ${brand.primaryColor}55`,
-                color: brand.primaryColor,
+                backgroundImage: brand.sidebarActiveBg,
+                border: `1px solid ${brand.inputBorder}`,
+                color: brand.textPrimary,
               }}
               onClick={() => window.open("#", "_blank")}
             >
@@ -276,7 +279,7 @@ export default function Overview() {
           </div>
 
           <div
-            className="rounded-2xl border p-5"
+            className="rounded-[22px] border p-5"
             style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}
           >
             <div className="flex items-center justify-between gap-3">

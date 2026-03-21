@@ -109,6 +109,9 @@ export default function Containers() {
   return (
     <div className="space-y-4">
       <div>
+        <div className="inline-flex items-center px-3 py-1 rounded-full border mb-2" style={{ borderColor: `${brand.primaryColor}55`, color: brand.primaryColor, fontSize: 11, fontWeight: 700, letterSpacing: 0.8 }}>
+          SERVICE MATRIX
+        </div>
         <div className="text-2xl font-bold" style={{ color: brand.textPrimary }}>
           Containers
         </div>
@@ -130,8 +133,8 @@ export default function Containers() {
 
       {showEmpty ? (
         <div
-          className="rounded-2xl border flex flex-col items-center justify-center text-center px-6 py-12 gap-3"
-          style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}
+          className="rounded-[22px] border flex flex-col items-center justify-center text-center px-6 py-12 gap-3"
+          style={{ backgroundColor: brand.cardBg, borderColor: brand.border, boxShadow: "0 16px 34px rgba(2, 9, 19, 0.36)" }}
         >
           <Box size={22} style={{ color: brand.primaryColor }} />
           <div className="text-sm font-semibold" style={{ color: brand.textPrimary }}>
@@ -144,9 +147,9 @@ export default function Containers() {
             type="button"
             className="mt-2 rounded-2xl px-5 py-2 transition-all duration-200 cursor-pointer"
             style={{
-              backgroundColor: brand.primaryColor,
-              color: brand.darkBg,
-              border: `1px solid ${brand.primaryColor}`,
+              backgroundImage: brand.accentGradient,
+              color: "#061220",
+              border: `1px solid rgba(255,157,46,0.5)`,
             }}
             onClick={() => navigate("/deploy")}
           >
@@ -155,8 +158,8 @@ export default function Containers() {
         </div>
       ) : (
         <div
-          className="rounded-2xl border overflow-hidden"
-          style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}
+          className="rounded-[22px] border overflow-hidden"
+          style={{ backgroundColor: brand.cardBg, borderColor: brand.border, boxShadow: "0 16px 34px rgba(2, 9, 19, 0.36)" }}
         >
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

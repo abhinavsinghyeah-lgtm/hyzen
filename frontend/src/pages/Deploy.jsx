@@ -105,6 +105,9 @@ if (accRef.current.includes("No Dockerfile found")) {
   return (
     <div className="space-y-6">
       <div>
+        <div className="inline-flex items-center px-3 py-1 rounded-full border mb-2" style={{ borderColor: `${brand.primaryColor}55`, color: brand.primaryColor, fontSize: 11, fontWeight: 700, letterSpacing: 0.8 }}>
+          DEPLOY PIPELINE
+        </div>
         <div className="text-2xl font-bold" style={{ color: brand.textPrimary }}>
           Deploy
         </div>
@@ -128,8 +131,8 @@ if (accRef.current.includes("No Dockerfile found")) {
       ) : null}
 
       <form
-        className="rounded-2xl border p-5 space-y-5"
-        style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}
+        className="rounded-[22px] border p-5 space-y-5"
+        style={{ backgroundColor: brand.cardBg, borderColor: brand.border, boxShadow: "0 16px 34px rgba(2, 9, 19, 0.36)" }}
         onSubmit={onDeploy}
       >
         <div className="space-y-4">
@@ -190,7 +193,7 @@ if (accRef.current.includes("No Dockerfile found")) {
         </div>
 
         <div
-          className="rounded-2xl border p-5 space-y-4"
+          className="rounded-[22px] border p-5 space-y-4"
           style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}
         >
           <div className="flex items-center justify-between gap-4">
@@ -201,9 +204,9 @@ if (accRef.current.includes("No Dockerfile found")) {
               type="button"
               className="rounded-2xl px-4 py-2 transition-all duration-200 cursor-pointer"
               style={{
-                backgroundColor: `${brand.primaryColor}15`,
-                border: `1px solid ${brand.primaryColor}55`,
-                color: brand.primaryColor,
+                backgroundImage: brand.sidebarActiveBg,
+                border: `1px solid ${brand.inputBorder}`,
+                color: brand.textPrimary,
               }}
               onClick={() => setEnvPairs((prev) => [...prev, { key: "", value: "" }])}
             >
@@ -292,8 +295,8 @@ if (accRef.current.includes("No Dockerfile found")) {
                     className="px-4 py-2 rounded-2xl transition-all duration-200 cursor-pointer text-sm font-semibold"
                     style={{
                       border: `1px solid ${brand.inputBorder}`,
-                      backgroundColor: active ? `${brand.primaryColor}18` : "transparent",
-                      color: active ? brand.primaryColor : brand.textMuted,
+                      backgroundColor: active ? "rgba(255,157,46,0.2)" : "transparent",
+                      color: active ? brand.textPrimary : brand.textMuted,
                     }}
                   >
                     {formatRamLabel(v)}
@@ -315,8 +318,8 @@ if (accRef.current.includes("No Dockerfile found")) {
                     className="px-4 py-2 rounded-2xl transition-all duration-200 cursor-pointer text-sm font-semibold"
                     style={{
                       border: `1px solid ${brand.inputBorder}`,
-                      backgroundColor: active ? `${brand.primaryColor}18` : "transparent",
-                      color: active ? brand.primaryColor : brand.textMuted,
+                      backgroundColor: active ? "rgba(255,157,46,0.2)" : "transparent",
+                      color: active ? brand.textPrimary : brand.textMuted,
                     }}
                   >
                     {v} core
@@ -332,10 +335,11 @@ if (accRef.current.includes("No Dockerfile found")) {
           disabled={deploying || !safeContainerName}
           className="w-full rounded-2xl py-3 font-semibold transition-all duration-200 cursor-pointer inline-flex items-center justify-center gap-2"
           style={{
-            backgroundColor: brand.primaryColor,
-            color: brand.darkBg,
+            backgroundImage: brand.accentGradient,
+            color: "#061220",
             opacity: deploying || !safeContainerName ? 0.7 : 1,
-            border: `1px solid ${brand.primaryColor}`,
+            border: `1px solid rgba(255,157,46,0.5)`,
+            boxShadow: "0 14px 30px rgba(255, 130, 42, 0.24)",
           }}
         >
           <Rocket size={18} />
@@ -343,8 +347,8 @@ if (accRef.current.includes("No Dockerfile found")) {
         </button>
       </form>
 
-<div
-        className="rounded-2xl border p-5"
+      <div
+        className="rounded-[22px] border p-5"
         style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}
       >
         <div className="flex items-center justify-between gap-3 mb-3">

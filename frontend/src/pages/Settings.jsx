@@ -78,6 +78,9 @@ export default function Settings() {
   return (
     <div className="space-y-6">
       <div>
+        <div className="inline-flex items-center px-3 py-1 rounded-full border mb-2" style={{ borderColor: `${brand.primaryColor}55`, color: brand.primaryColor, fontSize: 11, fontWeight: 700, letterSpacing: 0.8 }}>
+          CONFIGURATION
+        </div>
         <div className="text-2xl font-bold" style={{ color: brand.textPrimary }}>
           Settings
         </div>
@@ -95,8 +98,8 @@ export default function Settings() {
         </div>
       ) : (
         <form
-          className="rounded-2xl border p-5 space-y-6"
-          style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}
+          className="rounded-[22px] border p-5 space-y-6"
+          style={{ backgroundColor: brand.cardBg, borderColor: brand.border, boxShadow: "0 16px 34px rgba(2, 9, 19, 0.36)" }}
           onSubmit={onSave}
         >
           <div className="space-y-4">
@@ -228,10 +231,11 @@ export default function Settings() {
               disabled={saving}
               className="rounded-2xl px-6 py-3 font-semibold transition-all duration-200 cursor-pointer inline-flex items-center justify-center"
               style={{
-                backgroundColor: brand.primaryColor,
-                color: brand.darkBg,
+                backgroundImage: brand.accentGradient,
+                color: "#061220",
                 opacity: saving ? 0.7 : 1,
-                border: `1px solid ${brand.primaryColor}`,
+                border: `1px solid rgba(255,157,46,0.5)`,
+                boxShadow: "0 14px 30px rgba(255, 130, 42, 0.24)",
               }}
             >
               {saving ? "Saving..." : "Save"}

@@ -14,7 +14,8 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const glow = accentWithOpacity(brand.accentColor, "1a");
+  const glowBlue = accentWithOpacity(brand.accentColor, "2b");
+  const glowOrange = accentWithOpacity(brand.primaryColor, "30");
 
   async function onSubmit(e) {
     e.preventDefault();
@@ -36,23 +37,27 @@ export default function Login() {
       className="min-h-screen flex items-center justify-center p-6"
       style={{
         backgroundColor: brand.darkBg,
-        backgroundImage: `radial-gradient(circle at top, ${glow} 0%, transparent 60%)`,
+        backgroundImage: `radial-gradient(circle at 20% 15%, ${glowOrange} 0%, transparent 50%), radial-gradient(circle at 86% 10%, ${glowBlue} 0%, transparent 52%)`,
         transition: "all 200ms",
       }}
     >
       <div
-        className="w-full max-w-[420px] backdrop-blur-xl rounded-2xl border transition-all duration-200"
+        className="w-full max-w-[440px] backdrop-blur-xl rounded-[28px] border transition-all duration-200"
         style={{
           backgroundColor: brand.glassCardBg,
           borderColor: brand.border,
+          boxShadow: "0 26px 54px rgba(2, 9, 18, 0.56)",
         }}
       >
-        <div className="p-7">
+        <div className="p-8">
           <div className="mb-6">
-            <div className="text-xl font-semibold tracking-wide" style={{ color: brand.textPrimary }}>
+            <div className="inline-flex items-center px-3 py-1 rounded-full border mb-4" style={{ borderColor: `${brand.primaryColor}55`, color: brand.primaryColor, fontSize: 11, fontWeight: 700, letterSpacing: 0.8 }}>
+              DASHBOARD ACCESS
+            </div>
+            <div className="text-2xl font-extrabold tracking-tight" style={{ color: brand.textPrimary }}>
               {brand.name}
             </div>
-            <div className="mt-1 text-sm" style={{ color: brand.textMuted }}>
+            <div className="mt-2 text-sm" style={{ color: brand.textMuted }}>
               {brand.tagline}
             </div>
           </div>
@@ -65,7 +70,7 @@ export default function Login() {
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full rounded-2xl outline-none transition-all duration-200"
+                className="w-full rounded-xl outline-none transition-all duration-200"
                 style={{
                   backgroundColor: brand.inputBg,
                   border: `1px solid ${brand.inputBorder}`,
@@ -83,7 +88,7 @@ export default function Login() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-2xl outline-none transition-all duration-200"
+                className="w-full rounded-xl outline-none transition-all duration-200"
                 style={{
                   backgroundColor: brand.inputBg,
                   border: `1px solid ${brand.inputBorder}`,
@@ -109,11 +114,12 @@ export default function Login() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-2xl py-3 font-semibold transition-all duration-200"
+              className="w-full rounded-xl py-3 font-semibold transition-all duration-200"
               style={{
-                backgroundColor: brand.primaryColor,
-                color: brand.darkBg,
+                backgroundImage: brand.accentGradient,
+                color: "#061220",
                 opacity: loading ? 0.7 : 1,
+                boxShadow: "0 14px 30px rgba(255, 130, 42, 0.24)",
               }}
             >
               {loading ? "Signing in..." : "Sign in"}
