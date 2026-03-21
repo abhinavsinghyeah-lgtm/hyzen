@@ -31,45 +31,58 @@ router.get("/", async (req, res) => {
   try {
     const value = await getCachedContainers({
       fetcher: async () => {
-        const settings = await getSettings().catch(() => null);
-const docker = dockerFromSettings(settings);
+const settings = await getSettings().catch(() => null);
+        const docker = dockerFromSettings(settings);
 
-const containers = await docker.listContainers({ all: true });
-const results = await Promise.all(containers.map(async (c) => {
-  const container = docker.getContainer(c.Id);
-  let ramUsageBytes = null;
-  try {
-    const stats = await new Promise((resolve, reject) => {
-      container.stats({ stream: false }, (err, s) => {
-        if (err) return reject(err);
-        resolve(s);
-      });
-    });
-    ramUsageBytes = stats?.memory_stats?.usage || null;
-  } catch {}
+        const containers = await docker.listContainers({ all: true });
+        const results = await Promise.all(containers.map(async (c) => {
+          const container = docker.getContainer(c.Id);
+          let ramUsageBytes = null;
+          let ramLimitBytes = null;
 
-  const state = c.State || (c.Status || "").split(" ")[0] || "";
-  const status = toUiStatus(state);
+          if (c.State === "running") {
+            try {
+              const stats = await new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => reject(new Error("timeout")), 1500);
+                container.stats({ stream: false }, (err, s) => {
+                  clearTimeout(timeout);
+                  if (err) return reject(err);
+                  resolve(s);
+                });
+              });
+              ramUsageBytes = stats?.memory_stats?.usage || null;
+              ramLimitBytes = stats?.memory_stats?.limit || null;
+            } catch {}
+          }
 
-  let url = null;
-  try {
-    const inspect = await container.inspect();
-    url = inspectToUrl(inspect);
-  } catch {}
+          const state = c.State || (c.Status || "").split(" ")[0] || "";
+          const status = toUiStatus(state);
 
-  return {
-    id: c.Id,
-    name: (c.Names && c.Names[0] ? c.Names[0].replace(/^\//, "") : c.Id).slice(0, 64),
-    status,
-    image: c.Image || "",
-    state,
-    uptimeSeconds: c.UptimeSeconds || null,
-    ramUsageBytes,
-    url,
-  };
-}));
+          let url = null;
+          let uptimeSeconds = null;
+          try {
+            const inspect = await container.inspect();
+            url = inspectToUrl(inspect);
+            const startedAt = inspect?.State?.StartedAt ? new Date(inspect.State.StartedAt) : null;
+            if (startedAt && c.State === "running") {
+              uptimeSeconds = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000));
+            }
+          } catch {}
 
-return results;
+          return {
+            id: c.Id,
+            name: (c.Names && c.Names[0] ? c.Names[0].replace(/^\//, "") : c.Id).slice(0, 64),
+            status,
+            image: c.Image || "",
+            state,
+            uptimeSeconds,
+            ramUsageBytes,
+            ramLimitBytes,
+            url,
+          };
+        }));
+
+        return results;
       },
     });
 
