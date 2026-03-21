@@ -148,7 +148,47 @@ function detectStartCommand(cloneDir) {
   for (const candidate of ["server.js", "app.js", "src/index.js", "index.js"]) {
     if (fs.existsSync(path.join(cloneDir, candidate))) return `node ${candidate}`;
   }
-  return "npm start";
+
+  // Static-site fallback for plain HTML/CSS/JS repositories.
+  if (fs.existsSync(path.join(cloneDir, "index.html"))) {
+    return "node -e \"const http=require('http');const fs=require('fs');const p=require('path');const root=process.cwd();const m={'.html':'text/html','.css':'text/css','.js':'application/javascript','.json':'application/json','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.ico':'image/x-icon','.webp':'image/webp'};http.createServer((req,res)=>{let u=decodeURIComponent((req.url||'/').split('?')[0]);if(u==='/'||!u)u='/index.html';let f=p.join(root,u);if(!f.startsWith(root)){res.statusCode=403;return res.end('Forbidden');}if(fs.existsSync(f)&&fs.statSync(f).isDirectory())f=p.join(f,'index.html');if(!fs.existsSync(f)){const spa=p.join(root,'index.html');if(fs.existsSync(spa)){res.setHeader('Content-Type','text/html');return fs.createReadStream(spa).pipe(res);}res.statusCode=404;return res.end('Not found');}res.setHeader('Content-Type',m[p.extname(f)]||'application/octet-stream');fs.createReadStream(f).pipe(res);}).listen(process.env.PORT||3000,'0.0.0.0');\"";
+  }
+
+  return "";
+}
+
+function detectBuildCommand(cloneDir, requestedBuildCmd) {
+  const hasPackageJson = fs.existsSync(path.join(cloneDir, "package.json"));
+  const explicit = String(requestedBuildCmd || "").trim();
+  if (explicit) {
+    const looksLikeDefaultNpm = /^(npm\s+(install|ci))$/i.test(explicit);
+    if (!hasPackageJson && looksLikeDefaultNpm) return "";
+    return explicit;
+  }
+  if (fs.existsSync(path.join(cloneDir, "package-lock.json"))) return "npm ci";
+  if (hasPackageJson) return "npm install";
+  if (fs.existsSync(path.join(cloneDir, "yarn.lock"))) return "yarn install --frozen-lockfile";
+  if (fs.existsSync(path.join(cloneDir, "pnpm-lock.yaml"))) return "pnpm install --frozen-lockfile";
+  return "";
+}
+
+function runShellCommand(command, { cwd, env, log }) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, {
+      cwd,
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+      shell: true,
+    });
+
+    child.stdout.on("data", (d) => log(d.toString()));
+    child.stderr.on("data", (d) => log(d.toString()));
+    child.on("close", (code) => {
+      if (code === 0 || code === null) resolve();
+      else reject(new Error(`Command exited with code ${code}: ${command}`));
+    });
+    child.on("error", (e) => reject(new Error(`Command failed to start: ${e.message}`)));
+  });
 }
 
 // ─── Process helpers ──────────────────────────────────────────────────────────
@@ -182,21 +222,22 @@ function killProcess(pid) {
  * On Unix: detached + fd so child outlives server restarts.
  * On Windows: piped streams.
  */
-function spawnApp({ cmd, args, cwd, env, logFile }) {
+function spawnApp({ command, cwd, env, logFile }) {
   try {
     fs.appendFileSync(
       logFile,
-      `\n=== Start ${new Date().toISOString()} | ${cmd} ${args.join(" ")} ===\n`
+      `\n=== Start ${new Date().toISOString()} | ${command} ===\n`
     );
   } catch {}
 
   if (process.platform !== "win32") {
     const fd = fs.openSync(logFile, "a");
-    const child = spawn(cmd, args, {
+    const child = spawn(command, {
       cwd,
       env,
       stdio: ["ignore", fd, fd],
       detached: true,
+      shell: true,
     });
     child.unref();
     setTimeout(() => {
@@ -208,7 +249,7 @@ function spawnApp({ cmd, args, cwd, env, logFile }) {
 
   // Windows: piped
   const logStream = fs.createWriteStream(logFile, { flags: "a" });
-  const child = spawn(cmd, args, {
+  const child = spawn(command, {
     cwd,
     env,
     stdio: ["ignore", "pipe", "pipe"],
@@ -294,32 +335,27 @@ async function deployProcess({
   // 1. Clone
   const usedBranch = await cloneRepo(repoUrl, cloneDir, branch, log);
 
-  // 2. Build (npm install or custom)
-  const effectiveBuildCmd = (buildCmd || "").trim() || "npm install";
-  log(`\nRunning build: ${effectiveBuildCmd}\n`);
-
-  await new Promise((resolve, reject) => {
-    const parts = effectiveBuildCmd.split(/\s+/);
-    const buildProc = spawn(parts[0], parts.slice(1), {
+  // 2. Build (auto-detected when omitted)
+  const effectiveBuildCmd = detectBuildCommand(cloneDir, buildCmd);
+  if (effectiveBuildCmd) {
+    log(`\nRunning build: ${effectiveBuildCmd}\n`);
+    await runShellCommand(effectiveBuildCmd, {
       cwd: cloneDir,
       env: { ...process.env },
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: process.platform === "win32",
+      log,
     });
-    buildProc.stdout.on("data", (d) => log(d.toString()));
-    buildProc.stderr.on("data", (d) => log(d.toString()));
-    buildProc.on("close", (code) => {
-      if (code === 0 || code === null) resolve();
-      else reject(new Error(`Build command exited with code ${code}`));
-    });
-    buildProc.on("error", (e) =>
-      reject(new Error(`Build command failed to start: ${e.message}`))
-    );
-  });
-  log("Build complete.\n");
+    log("Build complete.\n");
+  } else {
+    log("\nNo build step detected. Skipping build.\n");
+  }
 
   // 3. Detect / use start command
   const effectiveStartCmd = (startCmd || "").trim() || detectStartCommand(cloneDir);
+  if (!effectiveStartCmd) {
+    throw new Error(
+      "Could not detect a start command. Provide one manually (for example: npm start or node server.js)."
+    );
+  }
   log(`Start command: ${effectiveStartCmd}\n`);
 
   // 4. Port
@@ -334,10 +370,8 @@ async function deployProcess({
   log(`Starting app on port ${hostPort}...\n`);
   fs.writeFileSync(logFile, `=== Deployment ${new Date().toISOString()} ===\n`);
 
-  const startParts = effectiveStartCmd.split(/\s+/);
   const child = spawnApp({
-    cmd: startParts[0],
-    args: startParts.slice(1),
+    command: effectiveStartCmd,
     cwd: cloneDir,
     env: processEnv,
     logFile,
@@ -389,14 +423,13 @@ async function rerunProcess({ workDir, startCmd, logFile, envPairs }) {
   const pairs = envPairs || [];
   const processEnv = buildEnvObject(pairs, hostPort);
 
-  const cmd = (startCmd || "npm start").trim();
-  const parts = cmd.split(/\s+/);
+  const cmd = (startCmd || detectStartCommand(workDir)).trim();
+  if (!cmd) throw new Error("No start command found for this deployment.");
 
   const effectiveLogFile = logFile || path.join(workDir, "..", "app.log");
 
   const child = spawnApp({
-    cmd: parts[0],
-    args: parts.slice(1),
+    command: cmd,
     cwd: workDir,
     env: processEnv,
     logFile: effectiveLogFile,
