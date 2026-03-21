@@ -34,47 +34,41 @@ router.get("/", async (req, res) => {
         const settings = await getSettings().catch(() => null);
         const docker = dockerFromSettings(settings);
 
-        const containers = await docker.listContainers({ all: true });
-        const results = [];
+const results = await Promise.all(containers.map(async (c) => {
+  const container = docker.getContainer(c.Id);
+  let ramUsageBytes = null;
+  try {
+    const stats = await new Promise((resolve, reject) => {
+      container.stats({ stream: false }, (err, s) => {
+        if (err) return reject(err);
+        resolve(s);
+      });
+    });
+    ramUsageBytes = stats?.memory_stats?.usage || null;
+  } catch {}
 
-        for (const c of containers) {
-          const container = docker.getContainer(c.Id);
-          let ramUsageBytes = null;
-          try {
-            const stats = await new Promise((resolve, reject) => {
-              container.stats({ stream: false }, (err, s) => {
-                if (err) return reject(err);
-                resolve(s);
-              });
-            });
+  const state = c.State || (c.Status || "").split(" ")[0] || "";
+  const status = toUiStatus(state);
 
-            ramUsageBytes = stats?.memory_stats?.usage || null;
-          } catch {
-            // Best effort: RAM usage is optional for the UI.
-          }
+  let url = null;
+  try {
+    const inspect = await container.inspect();
+    url = inspectToUrl(inspect);
+  } catch {}
 
-          const state = c.State || (c.Status || "").split(" ")[0] || "";
-          const status = toUiStatus(state);
+  return {
+    id: c.Id,
+    name: (c.Names && c.Names[0] ? c.Names[0].replace(/^\//, "") : c.Id).slice(0, 64),
+    status,
+    image: c.Image || "",
+    state,
+    uptimeSeconds: c.UptimeSeconds || null,
+    ramUsageBytes,
+    url,
+  };
+}));
 
-          let url = null;
-          try {
-            const inspect = await container.inspect();
-            url = inspectToUrl(inspect);
-          } catch {}
-
-          results.push({
-            id: c.Id,
-            name: (c.Names && c.Names[0] ? c.Names[0].replace(/^\//, "") : c.Id).slice(0, 64),
-            status,
-            image: c.Image || "",
-            state,
-            uptimeSeconds: c.UptimeSeconds || null,
-            ramUsageBytes,
-            url,
-          });
-        }
-
-        return results;
+return results;
       },
     });
 
