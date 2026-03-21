@@ -129,6 +129,8 @@ function buildEnvObject(envPairs, port) {
       .toUpperCase();
     if (k) obj[k] = String(pair?.value ?? "");
   }
+  // Force public binding by default for web servers.
+  if (!obj.HOST) obj.HOST = "0.0.0.0";
   // Always force platform-assigned port last.
   if (port != null) obj.PORT = String(port);
   return obj;
@@ -225,6 +227,56 @@ function detectBuildCommand(cloneDir, requestedBuildCmd) {
   if (fs.existsSync(path.join(cloneDir, "yarn.lock"))) return "yarn install --frozen-lockfile";
   if (fs.existsSync(path.join(cloneDir, "pnpm-lock.yaml"))) return "pnpm install --frozen-lockfile";
   return "";
+}
+
+function readPackageJsonSafe(projectDir) {
+  const pkgPath = path.join(projectDir, "package.json");
+  if (!fs.existsSync(pkgPath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function normalizeStartCommand(projectDir, command, onLog) {
+  const cmd = String(command || "").trim();
+  if (!cmd) return cmd;
+
+  const pkg = readPackageJsonSafe(projectDir);
+  const devScript = String(pkg?.scripts?.dev || "").toLowerCase();
+  const startScript = String(pkg?.scripts?.start || "").toLowerCase();
+  const isViteProject =
+    fs.existsSync(path.join(projectDir, "vite.config.js")) ||
+    devScript.includes("vite") ||
+    startScript.includes("vite");
+
+  if (!isViteProject) return cmd;
+
+  const hasHost = /--host(=|\s|$)/i.test(cmd);
+  const hasPort = /--port(=|\s|$)/i.test(cmd);
+
+  // Vite dev/preview defaults to localhost and may ignore PORT unless passed explicitly.
+  if (/^npm\s+run\s+dev\b/i.test(cmd) || /^npm\s+run\s+preview\b/i.test(cmd)) {
+    let next = cmd;
+    if (!hasHost || !hasPort) {
+      next += " --";
+      if (!hasHost) next += " --host 0.0.0.0";
+      if (!hasPort) next += " --port $PORT";
+      try { onLog?.(`Adjusted start command for Vite: ${next}\n`); } catch {}
+    }
+    return next;
+  }
+
+  if (/^vite\b/i.test(cmd)) {
+    let next = cmd;
+    if (!hasHost) next += " --host 0.0.0.0";
+    if (!hasPort) next += " --port $PORT";
+    try { onLog?.(`Adjusted start command for Vite: ${next}\n`); } catch {}
+    return next;
+  }
+
+  return cmd;
 }
 
 function runShellCommand(command, { cwd, env, log }) {
@@ -418,7 +470,8 @@ async function deployProcess({
   }
 
   // 3. Detect / use start command
-  const effectiveStartCmd = (startCmd || "").trim() || detectStartCommand(projectDir);
+  const requestedStartCmd = (startCmd || "").trim() || detectStartCommand(projectDir);
+  const effectiveStartCmd = normalizeStartCommand(projectDir, requestedStartCmd, log);
   if (!effectiveStartCmd) {
     throw new Error(
       "Could not detect a start command. Provide one manually (for example: npm start or node server.js)."
@@ -491,7 +544,8 @@ async function rerunProcess({ workDir, startCmd, logFile, envPairs, publicBaseUr
   const pairs = envPairs || [];
   const processEnv = buildEnvObject(pairs, hostPort);
 
-  const cmd = (startCmd || detectStartCommand(workDir)).trim();
+  const rawCmd = (startCmd || detectStartCommand(workDir)).trim();
+  const cmd = normalizeStartCommand(workDir, rawCmd);
   if (!cmd) throw new Error("No start command found for this deployment.");
 
   const effectiveLogFile = logFile || path.join(workDir, "..", "app.log");
