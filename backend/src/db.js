@@ -35,10 +35,16 @@ async function initDb() {
   `);
 
   // Backfill for older installs.
-  await pool.query(`
-    ALTER TABLE hyzen_deployments
-    ADD COLUMN IF NOT EXISTS url TEXT;
-  `);
+  await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS url TEXT;`);
+  await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS pid INTEGER;`);
+  await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS work_dir TEXT;`);
+  await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS log_file TEXT;`);
+  await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS start_cmd TEXT;`);
+
+  await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS pid INTEGER;`);
+  await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS work_dir TEXT;`);
+  await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS log_file TEXT;`);
+  await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS start_cmd TEXT;`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (

@@ -1,27 +1,16 @@
-const express = require("express");
+﻿const express = require("express");
 const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const Razorpay = require("razorpay");
+const fs = require("fs");
 
 const { requireUser } = require("../middleware/auth");
 const config = require("../config");
 const { getPool } = require("../db");
-const { deployToDocker } = require("../deployService");
+const { deployProcess, rerunProcess, killProcess, isPidRunning, envInputToPairs, buildEnvObject } = require("../deployService");
 const { invalidate } = require("../containersCache");
 
-const Docker = require("dockerode");
-const path = require("path");
-const os = require("os");
-const fs = require("fs");
-const util = require("util");
-const { execFile } = require("child_process");
-
 const router = express.Router();
-const execFileAsync = util.promisify(execFile);
-
-function dockerInstance() {
-  return new Docker({ socketPath: process.env.DOCKER_SOCKET || "/var/run/docker.sock" });
-}
 
 function daysRemaining(planExpiresAt) {
   if (!planExpiresAt) return 0;
@@ -44,104 +33,7 @@ async function getContainerCount(pool, userId) {
   return r.rows[0]?.count || 0;
 }
 
-function sanitizeEnvPairs(env) {
-  if (!env) return [];
-  if (Array.isArray(env)) return env;
-  if (typeof env === "object") {
-    return Object.entries(env).map(([key, value]) => ({ key, value }));
-  }
-  return [];
-}
-
-function normalizeEnvForDocker(envPairs) {
-  const envArr = [];
-  for (const pair of envPairs) {
-    const rawKey = String(pair?.key || "").trim();
-    const rawValue = String(pair?.value ?? "").toString();
-    if (!rawKey) continue;
-    const safeKey = rawKey
-      .replace(/\s+/g, "_")
-      .replace(/[^A-Za-z0-9_]/g, "_")
-      .toUpperCase();
-    envArr.push(`${safeKey}=${rawValue}`);
-  }
-  return envArr;
-}
-
-function parseCpuToNanoCpus(cpu) {
-  const n = Number(cpu);
-  if (Number.isNaN(n)) return 500000000;
-  return Math.round(n * 1e9);
-}
-
-function ramMbToBytes(ramMb) {
-  const n = Number(ramMb);
-  if (Number.isNaN(n)) return 512 * 1024 * 1024;
-  return n * 1024 * 1024;
-}
-
-function getContainerUrlFromInspect(inspect) {
-  const ports = inspect?.NetworkSettings?.Ports || {};
-  for (const bindings of Object.values(ports)) {
-    if (Array.isArray(bindings) && bindings[0]?.HostPort) {
-      const hostPort = bindings[0].HostPort;
-      return `http://localhost:${hostPort}`;
-    }
-  }
-  return null;
-}
-
-function toUiStatus(state) {
-  const s = String(state || "").toLowerCase();
-  if (s === "running") return "running";
-  if (s === "paused") return "paused";
-  if (!s) return "unknown";
-  return "stopped";
-}
-
-async function detectExposedPort(docker, imageTag, fallbackPort) {
-  try {
-    const img = docker.getImage(imageTag);
-    const info = await img.inspect();
-    const exposed = info?.Config?.ExposedPorts || {};
-    const keys = Object.keys(exposed);
-    if (!keys.length) return fallbackPort;
-    const key = keys[0];
-    const port = Number(String(key).split("/")[0]);
-    if (!Number.isNaN(port) && port > 0) return port;
-    return fallbackPort;
-  } catch {
-    return fallbackPort;
-  }
-}
-
-function isPortAvailable(port) {
-  const net = require("net");
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    server.once("error", () => resolve(false));
-    server.once("listening", () => {
-      server.close(() => resolve(true));
-    });
-    server.listen(port, "0.0.0.0");
-  });
-}
-
-async function getRandomAvailablePort(minPort = 3000, maxPort = 9000) {
-  const attempts = 120;
-  for (let i = 0; i < attempts; i++) {
-    const port = Math.floor(Math.random() * (maxPort - minPort + 1)) + minPort;
-    // eslint-disable-next-line no-await-in-loop
-    const ok = await isPortAvailable(port);
-    if (ok) return port;
-  }
-  for (let port = minPort; port <= maxPort; port++) {
-    // eslint-disable-next-line no-await-in-loop
-    const ok = await isPortAvailable(port);
-    if (ok) return port;
-  }
-  throw new Error(`No available port in range ${minPort}-${maxPort}`);
-}
+// ── Auth ──────────────────────────────────────────────────────────────────────
 
 router.post("/register", async (req, res) => {
   try {
@@ -151,26 +43,21 @@ router.post("/register", async (req, res) => {
     }
 
     const pool = getPool();
-    const existing = await pool.query(`SELECT id FROM users WHERE email = $1;`, [
-      email,
-    ]);
+    const existing = await pool.query(`SELECT id FROM users WHERE email = $1;`, [email]);
     if (existing.rows.length) {
       return res.status(409).json({ message: "Email already registered" });
     }
 
     const passwordHash = await bcrypt.hash(password, 12);
     const inserted = await pool.query(
-      `
-      INSERT INTO users (email, password, name, plan, plan_expires_at)
-      VALUES ($1, $2, $3, 'free', NULL)
-      RETURNING id, email, name, plan, plan_expires_at;
-      `,
+      `INSERT INTO users (email, password, name, plan, plan_expires_at)
+       VALUES ($1, $2, $3, 'free', NULL)
+       RETURNING id, email, name, plan, plan_expires_at;`,
       [email, passwordHash, name]
     );
 
-    const user = inserted.rows[0];
-    return res.json({ user });
-  } catch (err) {
+    return res.json({ user: inserted.rows[0] });
+  } catch {
     return res.status(500).json({ message: "Registration failed" });
   }
 });
@@ -196,7 +83,7 @@ router.post("/login", async (req, res) => {
     );
 
     return res.json({ token, user: { id: user.id, email: user.email, name: user.name, plan: user.plan } });
-  } catch (err) {
+  } catch {
     return res.status(500).json({ message: "Login failed" });
   }
 });
@@ -205,7 +92,10 @@ router.get("/me", requireUser, async (req, res) => {
   try {
     const pool = getPool();
     const userId = req.user.sub;
-    const u = await pool.query(`SELECT id, email, name, plan, plan_expires_at FROM users WHERE id = $1;`, [userId]);
+    const u = await pool.query(
+      `SELECT id, email, name, plan, plan_expires_at FROM users WHERE id = $1;`,
+      [userId]
+    );
     const user = u.rows[0];
     if (!user) return res.status(404).json({ message: "User not found" });
 
@@ -215,73 +105,41 @@ router.get("/me", requireUser, async (req, res) => {
     const days = daysRemaining(user.plan_expires_at);
 
     return res.json({
-      profile: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-      },
-      plan: {
-        ...planMeta,
-        key: plan,
-        daysRemaining: days,
-      },
+      profile: { id: user.id, email: user.email, name: user.name },
+      plan: { ...planMeta, key: plan, daysRemaining: days },
       containersUsed,
       containersAllowed: planMeta.containers,
     });
-  } catch (err) {
+  } catch {
     return res.status(500).json({ message: "Failed to load profile" });
   }
 });
+
+// ── User containers ───────────────────────────────────────────────────────────
 
 router.get("/containers", requireUser, async (req, res) => {
   try {
     const pool = getPool();
     const userId = req.user.sub;
 
-    const rows = await pool.query(
-      `SELECT id, container_id, name, url, ram, cpu, status, env_vars, created_at
+    const { rows } = await pool.query(
+      `SELECT id, name, url, status, pid, work_dir, log_file, start_cmd, env_vars, created_at
        FROM user_containers
        WHERE user_id = $1
        ORDER BY created_at DESC;`,
       [userId]
     );
 
-    const docker = dockerInstance();
-    const results = [];
-
-    for (const r of rows.rows) {
-      const containerId = r.container_id;
-      let uptimeSeconds = null;
-      let uiStatus = r.status;
-      let actualUrl = r.url;
-      try {
-        const container = docker.getContainer(containerId);
-        const inspect = await container.inspect();
-        const state = inspect?.State?.Status || (inspect?.State?.Running ? "running" : "stopped");
-        uiStatus = toUiStatus(state);
-        actualUrl = actualUrl || getContainerUrlFromInspect(inspect);
-        const startedAt = inspect?.State?.StartedAt ? new Date(inspect.State.StartedAt) : null;
-        if (startedAt) {
-          uptimeSeconds = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000));
-        }
-      } catch {
-        // Container missing; keep DB values.
-      }
-
-      results.push({
-        id: r.id,
-        name: r.name,
-        status: uiStatus,
-        url: actualUrl,
-        ram: r.ram,
-        cpu: r.cpu,
-        uptimeSeconds,
-        envVars: r.env_vars,
-      });
-    }
+    const results = rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      status: r.pid && isPidRunning(r.pid) ? "running" : "stopped",
+      url: r.url || null,
+      envVars: r.env_vars || [],
+    }));
 
     return res.json({ containers: results });
-  } catch (err) {
+  } catch {
     return res.status(500).json({ message: "Failed to load containers" });
   }
 });
@@ -291,7 +149,7 @@ router.post("/deploy", requireUser, async (req, res) => {
   res.setHeader("Cache-Control", "no-cache, no-transform");
   res.setHeader("Connection", "keep-alive");
 
-  const { repoUrl, branch, containerName, ramMb, cpuCores, ram, cpu, env } = req.body || {};
+  const { repoUrl, branch, containerName, env, buildCmd, startCmd } = req.body || {};
 
   if (!repoUrl || !containerName) {
     res.status(400).end("Missing repoUrl or containerName");
@@ -306,7 +164,6 @@ router.post("/deploy", requireUser, async (req, res) => {
     const user = u.rows[0];
     const planKey = user?.plan || "free";
     const planMeta = planInfoFor(planKey);
-
     const containersUsed = await getContainerCount(pool, userId);
 
     if (planMeta.containers === 0) {
@@ -323,45 +180,37 @@ router.post("/deploy", requireUser, async (req, res) => {
       return;
     }
 
-    const outputParts = [];
-    const onLog = (s) => {
-      outputParts.push(String(s));
-      res.write(String(s));
-    };
-
-    const deployed = await deployToDocker({
+    const result = await deployProcess({
       repoUrl,
       branch: branch || null,
       containerName,
-      ramMb: ramMb || ram,
-      cpuCores: cpuCores || cpu,
       env,
-      onLog,
+      buildCmd,
+      startCmd,
+      onLog: (s) => { try { res.write(s); } catch {} },
     });
 
     await pool.query(
-      `
-      INSERT INTO user_containers
-        (user_id, container_id, name, url, ram, cpu, status, env_vars)
-      VALUES
-        ($1, $2, $3, $4, $5, $6, $7, $8);
-      `,
+      `INSERT INTO user_containers
+         (user_id, name, url, status, pid, work_dir, log_file, start_cmd, env_vars)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9);`,
       [
         userId,
-        deployed.containerId,
-        deployed.safeName,
-        deployed.url,
-        deployed.ram,
-        deployed.cpu,
+        result.safeName,
+        result.url,
         "running",
+        result.pid,
+        result.workDir,
+        result.logFile,
+        result.startCmd,
         env || [],
       ]
     );
 
     res.end();
   } catch (err) {
-    res.write(`\nDeployment failed: ${err?.message || String(err)}\n`);
-    res.end();
+    try { res.write(`\nDeployment failed: ${err?.message || String(err)}\n`); } catch {}
+    try { res.end(); } catch {}
   }
 });
 
@@ -369,20 +218,29 @@ router.post("/containers/:id/start", requireUser, async (req, res) => {
   try {
     const pool = getPool();
     const userId = req.user.sub;
-    const r = await pool.query(
+    const { rows } = await pool.query(
       `SELECT * FROM user_containers WHERE id = $1 AND user_id = $2;`,
       [req.params.id, userId]
     );
-    const row = r.rows[0];
+    const row = rows[0];
     if (!row) return res.status(404).json({ message: "Container not found" });
+    if (isPidRunning(row.pid)) return res.json({ ok: true, message: "Already running" });
 
-    const docker = dockerInstance();
-    await docker.getContainer(row.container_id).start();
-    await pool.query(`UPDATE user_containers SET status = 'running' WHERE id = $1;`, [row.id]);
+    const { pid, url } = await rerunProcess({
+      workDir: row.work_dir,
+      startCmd: row.start_cmd,
+      logFile: row.log_file,
+      envPairs: row.env_vars || [],
+    });
+
+    await pool.query(
+      `UPDATE user_containers SET pid = $1, url = $2, status = 'running' WHERE id = $3;`,
+      [pid, url, row.id]
+    );
     invalidate();
     return res.json({ ok: true });
-  } catch {
-    return res.status(500).json({ message: "Failed to start container" });
+  } catch (err) {
+    return res.status(500).json({ message: err?.message || "Failed to start" });
   }
 });
 
@@ -390,20 +248,22 @@ router.post("/containers/:id/stop", requireUser, async (req, res) => {
   try {
     const pool = getPool();
     const userId = req.user.sub;
-    const r = await pool.query(
-      `SELECT * FROM user_containers WHERE id = $1 AND user_id = $2;`,
+    const { rows } = await pool.query(
+      `SELECT pid FROM user_containers WHERE id = $1 AND user_id = $2;`,
       [req.params.id, userId]
     );
-    const row = r.rows[0];
+    const row = rows[0];
     if (!row) return res.status(404).json({ message: "Container not found" });
 
-    const docker = dockerInstance();
-    await docker.getContainer(row.container_id).stop();
-    await pool.query(`UPDATE user_containers SET status = 'stopped' WHERE id = $1;`, [row.id]);
+    killProcess(row.pid);
+    await pool.query(
+      `UPDATE user_containers SET status = 'stopped' WHERE id = $1;`,
+      [req.params.id]
+    );
     invalidate();
     return res.json({ ok: true });
   } catch {
-    return res.status(500).json({ message: "Failed to stop container" });
+    return res.status(500).json({ message: "Failed to stop" });
   }
 });
 
@@ -411,20 +271,31 @@ router.post("/containers/:id/restart", requireUser, async (req, res) => {
   try {
     const pool = getPool();
     const userId = req.user.sub;
-    const r = await pool.query(
+    const { rows } = await pool.query(
       `SELECT * FROM user_containers WHERE id = $1 AND user_id = $2;`,
       [req.params.id, userId]
     );
-    const row = r.rows[0];
+    const row = rows[0];
     if (!row) return res.status(404).json({ message: "Container not found" });
 
-    const docker = dockerInstance();
-    await docker.getContainer(row.container_id).restart();
-    await pool.query(`UPDATE user_containers SET status = 'running' WHERE id = $1;`, [row.id]);
+    killProcess(row.pid);
+    await new Promise((r) => setTimeout(r, 600));
+
+    const { pid, url } = await rerunProcess({
+      workDir: row.work_dir,
+      startCmd: row.start_cmd,
+      logFile: row.log_file,
+      envPairs: row.env_vars || [],
+    });
+
+    await pool.query(
+      `UPDATE user_containers SET pid = $1, url = $2, status = 'running' WHERE id = $3;`,
+      [pid, url, row.id]
+    );
     invalidate();
     return res.json({ ok: true });
-  } catch {
-    return res.status(500).json({ message: "Failed to restart container" });
+  } catch (err) {
+    return res.status(500).json({ message: err?.message || "Failed to restart" });
   }
 });
 
@@ -432,137 +303,89 @@ router.get("/containers/:id/logs", requireUser, async (req, res) => {
   try {
     const pool = getPool();
     const userId = req.user.sub;
-    const r = await pool.query(
-      `SELECT container_id FROM user_containers WHERE id = $1 AND user_id = $2;`,
+    const { rows } = await pool.query(
+      `SELECT log_file FROM user_containers WHERE id = $1 AND user_id = $2;`,
       [req.params.id, userId]
     );
-    const row = r.rows[0];
+    const row = rows[0];
     if (!row) return res.status(404).json({ message: "Container not found" });
 
-    const docker = dockerInstance();
-    const container = docker.getContainer(row.container_id);
+    const logFile = row.log_file;
+    if (!logFile || !fs.existsSync(logFile)) {
+      return res.status(404).json({ message: "Log file not found" });
+    }
 
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
 
-    const { Writable } = require("stream");
-    const stdout = new Writable({
-      write(chunk, enc, cb) {
-        try {
-          res.write(chunk.toString("utf8"));
-        } catch {}
-        cb();
-      },
-    });
-    const stderr = new Writable({
-      write(chunk, enc, cb) {
-        try {
-          res.write(chunk.toString("utf8"));
-        } catch {}
-        cb();
-      },
-    });
+    let offset = 0;
+    try {
+      const initial = fs.readFileSync(logFile, "utf8");
+      res.write(initial);
+      offset = Buffer.byteLength(initial, "utf8");
+    } catch {}
 
-    const logStream = await container.logs({
-      follow: true,
-      stdout: true,
-      stderr: true,
-      since: 0,
-    });
-
-    docker.modem.demuxStream(logStream, stdout, stderr);
-
-    req.on("close", () => {
+    const interval = setInterval(() => {
       try {
-        logStream.destroy();
+        const stat = fs.statSync(logFile);
+        if (stat.size > offset) {
+          const fd = fs.openSync(logFile, "r");
+          const len = stat.size - offset;
+          const buf = Buffer.alloc(len);
+          fs.readSync(fd, buf, 0, len, offset);
+          fs.closeSync(fd);
+          offset = stat.size;
+          res.write(buf.toString("utf8"));
+        }
       } catch {}
-      try {
-        res.end();
-      } catch {}
-    });
+    }, 500);
+
+    const cleanup = () => {
+      clearInterval(interval);
+      try { res.end(); } catch {}
+    };
+    req.on("close", cleanup);
+    req.on("end", cleanup);
   } catch {
     return res.status(500).json({ message: "Failed to stream logs" });
   }
 });
 
-// Update env vars and recreate container from existing image.
 router.put("/containers/:id/env", requireUser, async (req, res) => {
   try {
     const pool = getPool();
     const userId = req.user.sub;
     const { env } = req.body || {};
 
-    const r = await pool.query(
+    const { rows } = await pool.query(
       `SELECT * FROM user_containers WHERE id = $1 AND user_id = $2;`,
       [req.params.id, userId]
     );
-    const row = r.rows[0];
+    const row = rows[0];
     if (!row) return res.status(404).json({ message: "Container not found" });
 
-    const envPairs = sanitizeEnvPairs(env);
-    const envArr = normalizeEnvForDocker(envPairs);
+    const envPairs = envInputToPairs(env);
 
-    // Recreate container.
-    const docker = dockerInstance();
-    const imageTag = `hyzen/${row.name}:latest`;
+    // Stop existing process, restart with new env.
+    killProcess(row.pid);
+    await new Promise((r) => setTimeout(r, 600));
 
-    // Stop/remove old container.
-    try {
-      await docker.getContainer(row.container_id).stop({ t: 10 });
-    } catch {}
-    try {
-      await docker.getContainer(row.container_id).remove({ force: true });
-    } catch {}
-
-    const hostPort = await getRandomAvailablePort(3000, 9000);
-    const url = `http://localhost:${hostPort}`;
-
-    const fallbackPort = 3000;
-    const containerPort = await detectExposedPort(docker, imageTag, fallbackPort);
-    const containerPortKey = `${containerPort}/tcp`;
-
-    const hostConfig = {
-      NanoCPUs: parseCpuToNanoCpus(row.cpu),
-      Memory: ramMbToBytes(row.ram),
-      PortBindings: {
-        [containerPortKey]: [{ HostPort: String(hostPort) }],
-      },
-    };
-
-    let newContainer;
-    try {
-      newContainer = await docker.createContainer({
-        name: row.name,
-        Image: imageTag,
-        HostConfig: hostConfig,
-        ExposedPorts: { [containerPortKey]: {} },
-        ...(envArr.length ? { Env: envArr } : {}),
-      });
-    } catch (createErr) {
-      return res.status(500).json({
-        message: `Failed to recreate container: ${createErr?.message || String(createErr)}`,
-      });
-    }
-
-    await newContainer.start();
+    const { pid, url } = await rerunProcess({
+      workDir: row.work_dir,
+      startCmd: row.start_cmd,
+      logFile: row.log_file,
+      envPairs,
+    });
 
     await pool.query(
-      `
-      UPDATE user_containers
-      SET container_id = $1,
-          url = $2,
-          status = 'running',
-          env_vars = $3
-      WHERE id = $4;
-      `,
-      [newContainer.id, url, envPairs, row.id]
+      `UPDATE user_containers SET pid = $1, url = $2, status = 'running', env_vars = $3 WHERE id = $4;`,
+      [pid, url, envPairs, row.id]
     );
-
     invalidate();
     return res.json({ ok: true });
   } catch (err) {
-    return res.status(500).json({ message: "Failed to update env" });
+    return res.status(500).json({ message: err?.message || "Failed to update env" });
   }
 });
 
@@ -570,37 +393,32 @@ router.post("/containers/:id/delete", requireUser, async (req, res) => {
   try {
     const pool = getPool();
     const userId = req.user.sub;
-    const r = await pool.query(
-      `SELECT container_id FROM user_containers WHERE id = $1 AND user_id = $2;`,
+    const { rows } = await pool.query(
+      `SELECT pid FROM user_containers WHERE id = $1 AND user_id = $2;`,
       [req.params.id, userId]
     );
-    const row = r.rows[0];
+    const row = rows[0];
     if (!row) return res.status(404).json({ message: "Container not found" });
 
-    const docker = dockerInstance();
-    const container = docker.getContainer(row.container_id);
-    try {
-      await container.stop({ t: 10 });
-    } catch {}
-    try {
-      await container.remove({ force: true });
-    } catch {}
-
+    killProcess(row.pid);
     await pool.query(`DELETE FROM user_containers WHERE id = $1;`, [req.params.id]);
     invalidate();
     return res.json({ ok: true });
   } catch {
-    return res.status(500).json({ message: "Failed to delete container" });
+    return res.status(500).json({ message: "Failed to delete" });
   }
 });
+
+// ── Billing ───────────────────────────────────────────────────────────────────
 
 router.get("/billing", requireUser, async (req, res) => {
   try {
     const pool = getPool();
     const userId = req.user.sub;
-    const u = await pool.query(`SELECT plan, plan_expires_at FROM users WHERE id = $1;`, [
-      userId,
-    ]);
+    const u = await pool.query(
+      `SELECT plan, plan_expires_at FROM users WHERE id = $1;`,
+      [userId]
+    );
     const user = u.rows[0];
     const planKey = user?.plan || "free";
     const meta = planInfoFor(planKey);
@@ -653,7 +471,7 @@ router.post("/billing/create-order", requireUser, async (req, res) => {
       keyId: config.razorpay.keyId,
       plan,
     });
-  } catch (err) {
+  } catch {
     return res.status(500).json({ message: "Failed to create Razorpay order" });
   }
 });
@@ -674,18 +492,13 @@ router.post("/billing/verify", requireUser, async (req, res) => {
       return res.status(400).json({ message: "Payment verification failed" });
     }
 
-    // Determine plan from order receipt/notes if needed; best-effort from body.
     const { plan } = req.body || {};
-    const finalPlan = plan && Object.prototype.hasOwnProperty.call(config.plans, plan) ? plan : "starter";
+    const finalPlan =
+      plan && Object.prototype.hasOwnProperty.call(config.plans, plan) ? plan : "starter";
 
     const pool = getPool();
     await pool.query(
-      `
-      UPDATE users
-      SET plan = $1,
-          plan_expires_at = NOW() + INTERVAL '30 days'
-      WHERE id = $2;
-      `,
+      `UPDATE users SET plan = $1, plan_expires_at = NOW() + INTERVAL '30 days' WHERE id = $2;`,
       [finalPlan, req.user.sub]
     );
 
@@ -694,6 +507,8 @@ router.post("/billing/verify", requireUser, async (req, res) => {
     return res.status(500).json({ message: "Failed to verify payment" });
   }
 });
+
+// ── Settings ──────────────────────────────────────────────────────────────────
 
 router.put("/settings", requireUser, async (req, res) => {
   try {
@@ -710,11 +525,10 @@ router.put("/settings", requireUser, async (req, res) => {
     }
 
     if (email) {
-      // Ensure email uniqueness.
-      const exists = await pool.query(`SELECT id FROM users WHERE email = $1 AND id <> $2;`, [
-        email,
-        userId,
-      ]);
+      const exists = await pool.query(
+        `SELECT id FROM users WHERE email = $1 AND id <> $2;`,
+        [email, userId]
+      );
       if (exists.rows.length) {
         return res.status(409).json({ message: "Email already in use" });
       }
@@ -743,4 +557,3 @@ router.put("/settings", requireUser, async (req, res) => {
 });
 
 module.exports = router;
-

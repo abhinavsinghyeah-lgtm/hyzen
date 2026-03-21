@@ -1,13 +1,76 @@
-import DockerfileHelpModal from "../components/DockerfileHelpModal.jsx";
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Rocket } from "lucide-react";
+﻿import React, { useEffect, useRef, useState } from "react";
+import { Rocket, X } from "lucide-react";
 import { apiStream } from "../api.js";
 import { brand } from "../config/brand.js";
 
-function formatRamLabel(mb) {
-  const n = Number(mb);
-  if (n >= 1024) return `${(n / 1024).toFixed(0)}GB`;
-  return `${n}MB`;
+function humanizeError(msg) {
+  const t = String(msg || "").toLowerCase();
+  if (t.includes("git clone") || t.includes("fatal: repository") || t.includes("errno"))
+    return "Couldn't reach the repository. Check that the URL is correct and the repo is public.";
+  if (t.includes("exited immediately") || t.includes("process.env.port"))
+    return "Your app crashed right after starting. Make sure it listens on process.env.PORT and your start command is correct.";
+  if (t.includes("build command") || (t.includes("exited with code") && !t.includes("exited immediately")))
+    return "The build step failed. Check your package.json and build command.";
+  if (t.includes("no available port"))
+    return "No free port is available right now. Try again in a moment.";
+  if (t.includes("branch") && (t.includes("not found") || t.includes("no such")))
+    return "Branch not found. Check the branch name in your repository.";
+  return msg;
+}
+
+function DeployErrorModal({ message, onClose }) {
+  if (!message) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(2,8,16,0.82)" }}
+      onClick={onClose}
+    >
+      <div
+        className="rounded-[22px] border w-full max-w-lg p-6 relative"
+        style={{
+          backgroundColor: brand.cardBg,
+          borderColor: `${brand.dangerColor}55`,
+          boxShadow: "0 24px 48px rgba(2,8,16,0.7)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          className="absolute top-4 right-4 rounded-xl p-1 transition-all duration-200 cursor-pointer"
+          style={{ color: brand.textMuted, border: `1px solid ${brand.border}` }}
+          onClick={onClose}
+          aria-label="Close"
+        >
+          <X size={16} />
+        </button>
+        <div
+          className="inline-flex items-center px-3 py-1 rounded-full border mb-3"
+          style={{ borderColor: `${brand.dangerColor}55`, color: brand.dangerColor, fontSize: 11, fontWeight: 700, letterSpacing: 0.8 }}
+        >
+          DEPLOYMENT FAILED
+        </div>
+        <div style={{ color: brand.textPrimary, fontSize: 15, fontWeight: 600, lineHeight: 1.6 }}>
+          {humanizeError(message)}
+        </div>
+        <div style={{ color: brand.textMuted, fontSize: 12, marginTop: 8 }}>
+          See the deployment log below for the full error output.
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-5 w-full rounded-2xl py-2.5 font-semibold transition-all duration-200 cursor-pointer"
+          style={{
+            backgroundImage: brand.accentGradient,
+            color: "#061220",
+            border: "1px solid rgba(255,157,46,0.5)",
+          }}
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function FieldLabel({ children }) {
@@ -20,39 +83,35 @@ function FieldLabel({ children }) {
 
 function sanitizeContainerName(containerName) {
   const raw = String(containerName || "");
-  const safeName = raw.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-  return safeName;
+  return raw.toLowerCase().replace(/[^a-z0-9-]/g, "-");
 }
 
 export default function Deploy() {
   const [repoUrl, setRepoUrl] = useState("");
   const [branch, setBranch] = useState("main");
   const [containerNameInput, setContainerNameInput] = useState("");
-  const [ramMb, setRamMb] = useState("512");
-  const [cpuCores, setCpuCores] = useState("0.5");
+  const [buildCmd, setBuildCmd] = useState("npm install");
+  const [startCmd, setStartCmd] = useState("");
+  const [envPairs, setEnvPairs] = useState([]);
 
   const [deploying, setDeploying] = useState(false);
   const [error, setError] = useState("");
+  const [showErrorModal, setShowErrorModal] = useState(false);
   const [output, setOutput] = useState("");
   const endRef = useRef(null);
   const accRef = useRef("");
 
-  const [showDockerfileHelp, setShowDockerfileHelp] = useState(false);
   const safeContainerName = sanitizeContainerName(containerNameInput);
-
-  const [envPairs, setEnvPairs] = useState([]);
 
   useEffect(() => {
     if (!endRef.current) return;
     endRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [output]);
 
-  const ramOptions = useMemo(() => ["256", "512", "1024"], []);
-  const cpuOptions = useMemo(() => ["0.25", "0.5", "1"], []);
-
   async function onDeploy(e) {
     e.preventDefault();
     setError("");
+    setShowErrorModal(false);
     setOutput("");
     accRef.current = "";
     setDeploying(true);
@@ -65,8 +124,8 @@ export default function Deploy() {
           repoUrl,
           branch,
           containerName: safeContainerName,
-          ram: ramMb,
-          cpu: cpuCores,
+          buildCmd,
+          startCmd,
           env: envPairs
             .filter((p) => String(p?.key || "").trim())
             .map((p) => ({ key: String(p.key), value: String(p.value ?? "") })),
@@ -89,14 +148,19 @@ export default function Deploy() {
         }
       }
 
-    setOutput(accRef.current);
-if (accRef.current.includes("No Dockerfile found")) {
-  setShowDockerfileHelp(true);
-}
+      const finalOutput = accRef.current;
+      setOutput(finalOutput);
+      if (finalOutput.includes("Deployment failed:")) {
+        const match = finalOutput.match(/Deployment failed: (.+)/);
+        if (match) {
+          setError(match[1]);
+          setShowErrorModal(true);
+        }
+      }
     } catch (err) {
       const msg = err?.message || "Deployment failed";
       setError(msg);
-      if (msg.includes("No Dockerfile found")) setShowDockerfileHelp(true);
+      setShowErrorModal(true);
     } finally {
       setDeploying(false);
     }
@@ -112,23 +176,9 @@ if (accRef.current.includes("No Dockerfile found")) {
           Deploy
         </div>
         <div className="text-sm mt-1" style={{ color: brand.textMuted }}>
-          Clone a GitHub repo, build an image, run with resource limits.
+          Clone a GitHub repo, install dependencies, and start your app.
         </div>
       </div>
-
-      {error ? (
-        <div
-          className="rounded-2xl border px-4 py-3"
-          style={{
-            backgroundColor: `${brand.dangerColor}12`,
-            borderColor: `${brand.dangerColor}55`,
-          }}
-        >
-          <span style={{ color: brand.textPrimary, fontSize: 13, fontWeight: 600 }}>
-            {error}
-          </span>
-        </div>
-      ) : null}
 
       <form
         className="rounded-[22px] border p-5 space-y-5"
@@ -169,7 +219,7 @@ if (accRef.current.includes("No Dockerfile found")) {
               />
             </div>
             <div>
-              <FieldLabel>Container name</FieldLabel>
+              <FieldLabel>App name</FieldLabel>
               <input
                 value={containerNameInput}
                 onChange={(e) => setContainerNameInput(e.target.value)}
@@ -182,12 +232,45 @@ if (accRef.current.includes("No Dockerfile found")) {
                 }}
                 placeholder="my-app"
               />
-              <div style={{ color: brand.textMuted, fontSize: 12, marginTop: 10 }}>
-                Sanitized:{" "}
+              <div style={{ color: brand.textMuted, fontSize: 12, marginTop: 6 }}>
+                Name:{" "}
                 <span style={{ color: brand.textPrimary, fontWeight: 700 }}>
                   {safeContainerName || "—"}
                 </span>
               </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <FieldLabel>Build command</FieldLabel>
+              <input
+                value={buildCmd}
+                onChange={(e) => setBuildCmd(e.target.value)}
+                className="w-full rounded-xl outline-none transition-all duration-200"
+                style={{
+                  backgroundColor: brand.inputBg,
+                  border: `1px solid ${brand.inputBorder}`,
+                  color: brand.textPrimary,
+                  padding: "12px 16px",
+                }}
+                placeholder="npm install"
+              />
+            </div>
+            <div>
+              <FieldLabel>Start command</FieldLabel>
+              <input
+                value={startCmd}
+                onChange={(e) => setStartCmd(e.target.value)}
+                className="w-full rounded-xl outline-none transition-all duration-200"
+                style={{
+                  backgroundColor: brand.inputBg,
+                  border: `1px solid ${brand.inputBorder}`,
+                  color: brand.textPrimary,
+                  padding: "12px 16px",
+                }}
+                placeholder="auto-detected from package.json"
+              />
             </div>
           </div>
         </div>
@@ -229,7 +312,7 @@ if (accRef.current.includes("No Dockerfile found")) {
                         prev.map((x, i) => (i === idx ? { ...x, key: v } : x))
                       );
                     }}
-                    className="w-full rounded-xl outline-none transition-all duration-200 cursor-pointer"
+                    className="w-full rounded-xl outline-none transition-all duration-200"
                     style={{
                       backgroundColor: brand.inputBg,
                       border: `1px solid ${brand.inputBorder}`,
@@ -246,7 +329,7 @@ if (accRef.current.includes("No Dockerfile found")) {
                         prev.map((x, i) => (i === idx ? { ...x, value: v } : x))
                       );
                     }}
-                    className="w-full rounded-xl outline-none transition-all duration-200 cursor-pointer"
+                    className="w-full rounded-xl outline-none transition-all duration-200"
                     style={{
                       backgroundColor: brand.inputBg,
                       border: `1px solid ${brand.inputBorder}`,
@@ -276,69 +359,20 @@ if (accRef.current.includes("No Dockerfile found")) {
             </div>
           ) : (
             <div style={{ color: brand.textMuted, fontSize: 13 }}>
-              Add `KEY=VALUE` pairs to inject environment variables into your container.
+              Add KEY=VALUE pairs to inject environment variables into your app.
             </div>
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <FieldLabel>RAM</FieldLabel>
-            <div className="flex flex-wrap gap-2">
-              {ramOptions.map((v) => {
-                const active = String(ramMb) === v;
-                return (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setRamMb(v)}
-                    className="px-4 py-2 rounded-2xl transition-all duration-200 cursor-pointer text-sm font-semibold"
-                    style={{
-                      border: `1px solid ${brand.inputBorder}`,
-                      backgroundColor: active ? "rgba(255,157,46,0.2)" : "transparent",
-                      color: active ? brand.textPrimary : brand.textMuted,
-                    }}
-                  >
-                    {formatRamLabel(v)}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div>
-            <FieldLabel>CPU</FieldLabel>
-            <div className="flex flex-wrap gap-2">
-              {cpuOptions.map((v) => {
-                const active = String(cpuCores) === v;
-                return (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setCpuCores(v)}
-                    className="px-4 py-2 rounded-2xl transition-all duration-200 cursor-pointer text-sm font-semibold"
-                    style={{
-                      border: `1px solid ${brand.inputBorder}`,
-                      backgroundColor: active ? "rgba(255,157,46,0.2)" : "transparent",
-                      color: active ? brand.textPrimary : brand.textMuted,
-                    }}
-                  >
-                    {v} core
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
         <button
           type="submit"
-          disabled={deploying || !safeContainerName}
+          disabled={deploying || !safeContainerName || !repoUrl}
           className="w-full rounded-2xl py-3 font-semibold transition-all duration-200 cursor-pointer inline-flex items-center justify-center gap-2"
           style={{
             backgroundImage: brand.accentGradient,
             color: "#061220",
-            opacity: deploying || !safeContainerName ? 0.7 : 1,
-            border: `1px solid rgba(255,157,46,0.5)`,
+            opacity: deploying || !safeContainerName || !repoUrl ? 0.7 : 1,
+            border: "1px solid rgba(255,157,46,0.5)",
             boxShadow: "0 14px 30px rgba(255, 130, 42, 0.24)",
           }}
         >
@@ -372,11 +406,10 @@ if (accRef.current.includes("No Dockerfile found")) {
         </div>
       </div>
 
-      <DockerfileHelpModal
-        open={showDockerfileHelp}
-        onClose={() => setShowDockerfileHelp(false)}
+      <DeployErrorModal
+        message={showErrorModal ? error : null}
+        onClose={() => setShowErrorModal(false)}
       />
     </div>
   );
 }
-

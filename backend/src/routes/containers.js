@@ -1,202 +1,194 @@
-const express = require("express");
-const Docker = require("dockerode");
+﻿const express = require("express");
+const fs = require("fs");
 const router = express.Router();
-const { getSettings } = require("../db");
-const { getCachedContainers, invalidate } = require("../containersCache");
+const { getPool } = require("../db");
+const { invalidate } = require("../containersCache");
+const { killProcess, isPidRunning, rerunProcess } = require("../deployService");
 
-function dockerFromSettings() {
-  return new Docker({ socketPath: process.env.DOCKER_SOCKET || "/var/run/docker.sock" });
-}
-
-function toUiStatus(state) {
-  const s = String(state || "").toLowerCase();
-  if (s === "running") return "running";
-  if (s === "paused") return "paused";
-  if (!s) return "unknown";
-  return "stopped";
-}
-
-function inspectToUrl(inspect) {
-  const ports = inspect?.NetworkSettings?.Ports || {};
-  for (const bindings of Object.values(ports)) {
-    if (Array.isArray(bindings) && bindings[0]?.HostPort) {
-      const hostPort = bindings[0].HostPort;
-      return `http://localhost:${hostPort}`;
-    }
-  }
-  return null;
-}
-
+// ── GET / — list all deployments ─────────────────────────────────────────────
 router.get("/", async (req, res) => {
   try {
-    const value = await getCachedContainers({
-      fetcher: async () => {
-const settings = await getSettings().catch(() => null);
-        const docker = dockerFromSettings(settings);
+    const pool = getPool();
+    const { rows } = await pool.query(
+      `SELECT id, repo_url, branch, container_name, status, url, pid,
+              work_dir, log_file, start_cmd, created_at
+       FROM hyzen_deployments
+       ORDER BY id DESC`
+    );
 
-        const containers = await docker.listContainers({ all: true });
-        const results = await Promise.all(containers.map(async (c) => {
-          const container = docker.getContainer(c.Id);
-          let ramUsageBytes = null;
-          let ramLimitBytes = null;
-
-          if (c.State === "running") {
-            try {
-              const stats = await new Promise((resolve, reject) => {
-                const timeout = setTimeout(() => reject(new Error("timeout")), 1500);
-                container.stats({ stream: false }, (err, s) => {
-                  clearTimeout(timeout);
-                  if (err) return reject(err);
-                  resolve(s);
-                });
-              });
-              ramUsageBytes = stats?.memory_stats?.usage || null;
-              ramLimitBytes = stats?.memory_stats?.limit || null;
-            } catch {}
-          }
-
-          const state = c.State || (c.Status || "").split(" ")[0] || "";
-          const status = toUiStatus(state);
-
-          let url = null;
-          let uptimeSeconds = null;
-          try {
-            const inspect = await container.inspect();
-            url = inspectToUrl(inspect);
-            const startedAt = inspect?.State?.StartedAt ? new Date(inspect.State.StartedAt) : null;
-            if (startedAt && c.State === "running") {
-              uptimeSeconds = Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000));
-            }
-          } catch {}
-
-          return {
-            id: c.Id,
-            name: (c.Names && c.Names[0] ? c.Names[0].replace(/^\//, "") : c.Id).slice(0, 64),
-            status,
-            image: c.Image || "",
-            state,
-            uptimeSeconds,
-            ramUsageBytes,
-            ramLimitBytes,
-            url,
-          };
-        }));
-
-        return results;
-      },
+    const result = rows.map((row) => {
+      const alive = row.pid ? isPidRunning(row.pid) : false;
+      return {
+        id: String(row.id),
+        name: row.container_name || "",
+        status: alive ? "running" : "stopped",
+        url: row.url || null,
+        pid: row.pid || null,
+        workDir: row.work_dir || null,
+        logFile: row.log_file || null,
+        startCmd: row.start_cmd || null,
+        branch: row.branch || null,
+        repoUrl: row.repo_url || null,
+        createdAt: row.created_at || null,
+      };
     });
 
-    return res.json(value);
+    return res.json(result);
   } catch (err) {
-    return res.status(500).json({ message: "Failed to list containers" });
+    return res.status(500).json({ message: "Failed to list deployments" });
   }
 });
 
+// ── POST /:id/start ───────────────────────────────────────────────────────────
 router.post("/:id/start", async (req, res) => {
   try {
-    const settings = await getSettings().catch(() => null);
-    const docker = dockerFromSettings(settings);
-    const container = docker.getContainer(req.params.id);
-    await container.start();
+    const pool = getPool();
+    const { rows } = await pool.query(
+      "SELECT * FROM hyzen_deployments WHERE id = $1",
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ message: "Deployment not found" });
+
+    const row = rows[0];
+    if (isPidRunning(row.pid)) return res.json({ ok: true, message: "Already running" });
+
+    const { pid, url } = await rerunProcess({
+      workDir: row.work_dir,
+      startCmd: row.start_cmd,
+      logFile: row.log_file,
+      envPairs: [],
+    });
+
+    await pool.query(
+      "UPDATE hyzen_deployments SET pid = $1, url = $2, status = 'running' WHERE id = $3",
+      [pid, url, row.id]
+    );
     invalidate();
     return res.json({ ok: true });
   } catch (err) {
-    return res.status(500).json({ message: "Failed to start container" });
+    return res.status(500).json({ message: err?.message || "Failed to start" });
   }
 });
 
+// ── POST /:id/stop ────────────────────────────────────────────────────────────
 router.post("/:id/stop", async (req, res) => {
   try {
-    const settings = await getSettings().catch(() => null);
-    const docker = dockerFromSettings(settings);
-    const container = docker.getContainer(req.params.id);
-    await container.stop();
+    const pool = getPool();
+    const { rows } = await pool.query(
+      "SELECT pid FROM hyzen_deployments WHERE id = $1",
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ message: "Deployment not found" });
+
+    killProcess(rows[0].pid);
+    await pool.query(
+      "UPDATE hyzen_deployments SET status = 'stopped' WHERE id = $1",
+      [req.params.id]
+    );
     invalidate();
     return res.json({ ok: true });
   } catch (err) {
-    return res.status(500).json({ message: "Failed to stop container" });
+    return res.status(500).json({ message: "Failed to stop" });
   }
 });
 
+// ── POST /:id/restart ─────────────────────────────────────────────────────────
 router.post("/:id/restart", async (req, res) => {
   try {
-    const settings = await getSettings().catch(() => null);
-    const docker = dockerFromSettings(settings);
-    const container = docker.getContainer(req.params.id);
-    await container.restart();
+    const pool = getPool();
+    const { rows } = await pool.query(
+      "SELECT * FROM hyzen_deployments WHERE id = $1",
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ message: "Deployment not found" });
+
+    const row = rows[0];
+    killProcess(row.pid);
+    await new Promise((r) => setTimeout(r, 600));
+
+    const { pid, url } = await rerunProcess({
+      workDir: row.work_dir,
+      startCmd: row.start_cmd,
+      logFile: row.log_file,
+      envPairs: [],
+    });
+
+    await pool.query(
+      "UPDATE hyzen_deployments SET pid = $1, url = $2, status = 'running' WHERE id = $3",
+      [pid, url, row.id]
+    );
     invalidate();
     return res.json({ ok: true });
   } catch (err) {
-    return res.status(500).json({ message: "Failed to restart container" });
+    return res.status(500).json({ message: err?.message || "Failed to restart" });
   }
 });
 
+// ── POST /:id/delete ──────────────────────────────────────────────────────────
 router.post("/:id/delete", async (req, res) => {
   try {
-    const settings = await getSettings().catch(() => null);
-    const docker = dockerFromSettings(settings);
-    const container = docker.getContainer(req.params.id);
+    const pool = getPool();
+    const { rows } = await pool.query(
+      "SELECT pid FROM hyzen_deployments WHERE id = $1",
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ message: "Deployment not found" });
 
-    try {
-      await container.stop({ t: 10 });
-    } catch {}
-    await container.remove({ force: true });
+    killProcess(rows[0].pid);
+    await pool.query("DELETE FROM hyzen_deployments WHERE id = $1", [req.params.id]);
     invalidate();
     return res.json({ ok: true });
   } catch (err) {
-    return res.status(500).json({ message: "Failed to delete container" });
+    return res.status(500).json({ message: "Failed to delete" });
   }
 });
 
+// ── GET /:id/logs — stream from log file ──────────────────────────────────────
 router.get("/:id/logs", async (req, res) => {
   try {
-    const settings = await getSettings().catch(() => null);
-    const docker = dockerFromSettings(settings);
-    const container = docker.getContainer(req.params.id);
+    const pool = getPool();
+    const { rows } = await pool.query(
+      "SELECT log_file FROM hyzen_deployments WHERE id = $1",
+      [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ message: "Deployment not found" });
+
+    const logFile = rows[0].log_file;
+    if (!logFile || !fs.existsSync(logFile)) {
+      return res.status(404).json({ message: "Log file not found" });
+    }
 
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
 
-    const { Writable } = require("stream");
+    let offset = 0;
+    // Send existing content first.
+    try {
+      const initial = fs.readFileSync(logFile, "utf8");
+      res.write(initial);
+      offset = Buffer.byteLength(initial, "utf8");
+    } catch {}
 
-    const stdout = new Writable({
-      write(chunk, enc, cb) {
-        try {
-          res.write(chunk.toString("utf8"));
-        } catch {}
-        cb();
-      },
-    });
-
-    const stderr = new Writable({
-      write(chunk, enc, cb) {
-        try {
-          res.write(chunk.toString("utf8"));
-        } catch {}
-        cb();
-      },
-    });
-
-    const logStream = await container.logs({
-      follow: true,
-      stdout: true,
-      stderr: true,
-      since: 0,
-    });
-
-    // Demux stdout/stderr so the frontend receives clean UTF-8 log lines.
-    docker.modem.demuxStream(logStream, stdout, stderr);
+    const interval = setInterval(() => {
+      try {
+        const stat = fs.statSync(logFile);
+        if (stat.size > offset) {
+          const fd = fs.openSync(logFile, "r");
+          const len = stat.size - offset;
+          const buf = Buffer.alloc(len);
+          fs.readSync(fd, buf, 0, len, offset);
+          fs.closeSync(fd);
+          offset = stat.size;
+          res.write(buf.toString("utf8"));
+        }
+      } catch {}
+    }, 500);
 
     const cleanup = () => {
-      try {
-        logStream.destroy();
-      } catch {}
-      try {
-        res.end();
-      } catch {}
+      clearInterval(interval);
+      try { res.end(); } catch {}
     };
-
     req.on("close", cleanup);
     req.on("end", cleanup);
   } catch (err) {
@@ -205,4 +197,3 @@ router.get("/:id/logs", async (req, res) => {
 });
 
 module.exports = router;
-

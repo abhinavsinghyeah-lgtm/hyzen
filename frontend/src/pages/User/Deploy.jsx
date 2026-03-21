@@ -1,12 +1,76 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Rocket } from "lucide-react";
+﻿import React, { useEffect, useRef, useState } from "react";
+import { Rocket, X } from "lucide-react";
 import { apiStream, api } from "../../api.js";
 import { brand } from "../../config/brand.js";
 
-function formatRamLabel(mb) {
-  const n = Number(mb);
-  if (n >= 1024) return `${(n / 1024).toFixed(0)}GB`;
-  return `${n}MB`;
+function humanizeError(msg) {
+  const t = String(msg || "").toLowerCase();
+  if (t.includes("git clone") || t.includes("fatal: repository") || t.includes("errno"))
+    return "Couldn't reach the repository. Check that the URL is correct and the repo is public.";
+  if (t.includes("exited immediately") || t.includes("process.env.port"))
+    return "Your app crashed right after starting. Make sure it listens on process.env.PORT and your start command is correct.";
+  if (t.includes("build command") || (t.includes("exited with code") && !t.includes("exited immediately")))
+    return "The build step failed. Check your package.json and build command.";
+  if (t.includes("no available port"))
+    return "No free port is available right now. Try again in a moment.";
+  if (t.includes("branch") && (t.includes("not found") || t.includes("no such")))
+    return "Branch not found. Check the branch name in your repository.";
+  return msg;
+}
+
+function DeployErrorModal({ message, onClose }) {
+  if (!message) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(2,8,16,0.82)" }}
+      onClick={onClose}
+    >
+      <div
+        className="rounded-[22px] border w-full max-w-lg p-6 relative"
+        style={{
+          backgroundColor: brand.cardBg,
+          borderColor: `${brand.dangerColor}55`,
+          boxShadow: "0 24px 48px rgba(2,8,16,0.7)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          className="absolute top-4 right-4 rounded-xl p-1 transition-all duration-200 cursor-pointer"
+          style={{ color: brand.textMuted, border: `1px solid ${brand.border}` }}
+          onClick={onClose}
+          aria-label="Close"
+        >
+          <X size={16} />
+        </button>
+        <div
+          className="inline-flex items-center px-3 py-1 rounded-full border mb-3"
+          style={{ borderColor: `${brand.dangerColor}55`, color: brand.dangerColor, fontSize: 11, fontWeight: 700, letterSpacing: 0.8 }}
+        >
+          DEPLOYMENT FAILED
+        </div>
+        <div style={{ color: brand.textPrimary, fontSize: 15, fontWeight: 600, lineHeight: 1.6 }}>
+          {humanizeError(message)}
+        </div>
+        <div style={{ color: brand.textMuted, fontSize: 12, marginTop: 8 }}>
+          See the deployment log below for the full error output.
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-5 w-full rounded-2xl py-2.5 font-semibold transition-all duration-200 cursor-pointer"
+          style={{
+            backgroundImage: brand.accentGradient,
+            color: "#061220",
+            border: "1px solid rgba(255,157,46,0.5)",
+          }}
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function FieldLabel({ children }) {
@@ -19,8 +83,7 @@ function FieldLabel({ children }) {
 
 function sanitizeContainerName(containerName) {
   const raw = String(containerName || "");
-  const safeName = raw.toLowerCase().replace(/[^a-z0-9-]/g, "-");
-  return safeName;
+  return raw.toLowerCase().replace(/[^a-z0-9-]/g, "-");
 }
 
 export default function UserDeploy() {
@@ -29,20 +92,20 @@ export default function UserDeploy() {
   const [repoUrl, setRepoUrl] = useState("");
   const [branch, setBranch] = useState("main");
   const [containerNameInput, setContainerNameInput] = useState("");
-  const [ramMb, setRamMb] = useState("512");
-  const [cpuCores, setCpuCores] = useState("0.5");
+  const [buildCmd, setBuildCmd] = useState("npm install");
+  const [startCmd, setStartCmd] = useState("");
+  const [envPairs, setEnvPairs] = useState([]);
 
   const [deploying, setDeploying] = useState(false);
   const [error, setError] = useState("");
+  const [showErrorModal, setShowErrorModal] = useState(false);
   const [output, setOutput] = useState("");
   const endRef = useRef(null);
   const accRef = useRef("");
 
-  const safeContainerName = sanitizeContainerName(containerNameInput);
-
-  const [envPairs, setEnvPairs] = useState([]);
-
   const [billing, setBilling] = useState(null);
+
+  const safeContainerName = sanitizeContainerName(containerNameInput);
 
   useEffect(() => {
     async function load() {
@@ -63,9 +126,6 @@ export default function UserDeploy() {
     endRef.current.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [output]);
 
-  const ramOptions = useMemo(() => ["256", "512", "1024"], []);
-  const cpuOptions = useMemo(() => ["0.25", "0.5", "1"], []);
-
   const planKey = billing?.plan?.key || "free";
   const containersAllowed = billing?.containersAllowed ?? 0;
   const containersUsed = billing?.containersUsed ?? 0;
@@ -75,6 +135,7 @@ export default function UserDeploy() {
   async function onDeploy(e) {
     e.preventDefault();
     setError("");
+    setShowErrorModal(false);
     setOutput("");
     accRef.current = "";
     setDeploying(true);
@@ -88,8 +149,8 @@ export default function UserDeploy() {
           repoUrl,
           branch,
           containerName: safeContainerName,
-          ram: ramMb,
-          cpu: cpuCores,
+          buildCmd,
+          startCmd,
           env: envPairs
             .filter((p) => String(p?.key || "").trim())
             .map((p) => ({ key: String(p.key), value: String(p.value ?? "") })),
@@ -112,9 +173,19 @@ export default function UserDeploy() {
         }
       }
 
-      setOutput(accRef.current);
+      const finalOutput = accRef.current;
+      setOutput(finalOutput);
+      if (finalOutput.includes("Deployment failed:")) {
+        const match = finalOutput.match(/Deployment failed: (.+)/);
+        if (match) {
+          setError(match[1]);
+          setShowErrorModal(true);
+        }
+      }
     } catch (err) {
-      setError(err?.message || "Deployment failed");
+      const msg = err?.message || "Deployment failed";
+      setError(msg);
+      setShowErrorModal(true);
     } finally {
       setDeploying(false);
     }
@@ -130,15 +201,6 @@ export default function UserDeploy() {
           Deploy your project within plan limits.
         </div>
       </div>
-
-      {error ? (
-        <div
-          className="rounded-2xl border px-4 py-3"
-          style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}
-        >
-          <div style={{ color: brand.textPrimary, fontSize: 13, fontWeight: 600 }}>{error}</div>
-        </div>
-      ) : null}
 
       {billing ? (
         <div
@@ -172,10 +234,7 @@ export default function UserDeploy() {
       ) : null}
 
       {isFree ? (
-        <div
-          className="rounded-2xl border px-4 py-3"
-          style={{ backgroundColor: `${brand.primaryColor}10`, borderColor: brand.border }}
-        >
+        <div className="rounded-2xl border px-4 py-3" style={{ backgroundColor: `${brand.primaryColor}10`, borderColor: brand.border }}>
           <div style={{ color: brand.textPrimary, fontSize: 13, fontWeight: 600 }}>
             Choose a plan to start deploying.
           </div>
@@ -183,10 +242,7 @@ export default function UserDeploy() {
       ) : null}
 
       {atLimit ? (
-        <div
-          className="rounded-2xl border px-4 py-3"
-          style={{ backgroundColor: `${brand.warningColor}10`, borderColor: brand.border }}
-        >
+        <div className="rounded-2xl border px-4 py-3" style={{ backgroundColor: `${brand.warningColor}10`, borderColor: brand.border }}>
           <div style={{ color: brand.textPrimary, fontSize: 13, fontWeight: 600 }}>
             Upgrade your plan to deploy more containers.
           </div>
@@ -204,7 +260,7 @@ export default function UserDeploy() {
             <input
               value={repoUrl}
               onChange={(e) => setRepoUrl(e.target.value)}
-              className="w-full rounded-xl outline-none transition-all duration-200 cursor-pointer"
+              className="w-full rounded-xl outline-none transition-all duration-200"
               style={{
                 backgroundColor: brand.inputBg,
                 border: `1px solid ${brand.inputBorder}`,
@@ -221,7 +277,7 @@ export default function UserDeploy() {
               <input
                 value={branch}
                 onChange={(e) => setBranch(e.target.value)}
-                className="w-full rounded-xl outline-none transition-all duration-200 cursor-pointer"
+                className="w-full rounded-xl outline-none transition-all duration-200"
                 style={{
                   backgroundColor: brand.inputBg,
                   border: `1px solid ${brand.inputBorder}`,
@@ -232,11 +288,11 @@ export default function UserDeploy() {
               />
             </div>
             <div>
-              <FieldLabel>Container name</FieldLabel>
+              <FieldLabel>App name</FieldLabel>
               <input
                 value={containerNameInput}
                 onChange={(e) => setContainerNameInput(e.target.value)}
-                className="w-full rounded-xl outline-none transition-all duration-200 cursor-pointer"
+                className="w-full rounded-xl outline-none transition-all duration-200"
                 style={{
                   backgroundColor: brand.inputBg,
                   border: `1px solid ${brand.inputBorder}`,
@@ -245,12 +301,45 @@ export default function UserDeploy() {
                 }}
                 placeholder="my-app"
               />
-              <div style={{ color: brand.textMuted, fontSize: 12, marginTop: 10 }}>
-                Sanitized:{" "}
+              <div style={{ color: brand.textMuted, fontSize: 12, marginTop: 6 }}>
+                Name:{" "}
                 <span style={{ color: brand.textPrimary, fontWeight: 700 }}>
                   {safeContainerName || "—"}
                 </span>
               </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <FieldLabel>Build command</FieldLabel>
+              <input
+                value={buildCmd}
+                onChange={(e) => setBuildCmd(e.target.value)}
+                className="w-full rounded-xl outline-none transition-all duration-200"
+                style={{
+                  backgroundColor: brand.inputBg,
+                  border: `1px solid ${brand.inputBorder}`,
+                  color: brand.textPrimary,
+                  padding: "12px 16px",
+                }}
+                placeholder="npm install"
+              />
+            </div>
+            <div>
+              <FieldLabel>Start command</FieldLabel>
+              <input
+                value={startCmd}
+                onChange={(e) => setStartCmd(e.target.value)}
+                className="w-full rounded-xl outline-none transition-all duration-200"
+                style={{
+                  backgroundColor: brand.inputBg,
+                  border: `1px solid ${brand.inputBorder}`,
+                  color: brand.textPrimary,
+                  padding: "12px 16px",
+                }}
+                placeholder="auto-detected from package.json"
+              />
             </div>
           </div>
         </div>
@@ -277,23 +366,15 @@ export default function UserDeploy() {
           {envPairs.length ? (
             <div className="space-y-3">
               {envPairs.map((p, idx) => (
-                <div
-                  key={idx}
-                  className="grid grid-cols-1 md:grid-cols-[1fr_1fr_44px] gap-3 items-center"
-                >
+                <div key={idx} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_44px] gap-3 items-center">
                   <input
                     value={p.key}
                     onChange={(e) => {
                       const v = e.target.value;
                       setEnvPairs((prev) => prev.map((x, i) => (i === idx ? { ...x, key: v } : x)));
                     }}
-                    className="w-full rounded-xl outline-none transition-all duration-200 cursor-pointer"
-                    style={{
-                      backgroundColor: brand.inputBg,
-                      border: `1px solid ${brand.inputBorder}`,
-                      color: brand.textPrimary,
-                      padding: "12px 16px",
-                    }}
+                    className="w-full rounded-xl outline-none transition-all duration-200"
+                    style={{ backgroundColor: brand.inputBg, border: `1px solid ${brand.inputBorder}`, color: brand.textPrimary, padding: "12px 16px" }}
                     placeholder="KEY"
                   />
                   <input
@@ -302,27 +383,16 @@ export default function UserDeploy() {
                       const v = e.target.value;
                       setEnvPairs((prev) => prev.map((x, i) => (i === idx ? { ...x, value: v } : x)));
                     }}
-                    className="w-full rounded-xl outline-none transition-all duration-200 cursor-pointer"
-                    style={{
-                      backgroundColor: brand.inputBg,
-                      border: `1px solid ${brand.inputBorder}`,
-                      color: brand.textPrimary,
-                      padding: "12px 16px",
-                    }}
+                    className="w-full rounded-xl outline-none transition-all duration-200"
+                    style={{ backgroundColor: brand.inputBg, border: `1px solid ${brand.inputBorder}`, color: brand.textPrimary, padding: "12px 16px" }}
                     placeholder="VALUE"
                   />
                   <button
                     type="button"
                     className="rounded-xl transition-all duration-200 cursor-pointer inline-flex items-center justify-center"
-                    style={{
-                      width: 44,
-                      height: 44,
-                      backgroundColor: "transparent",
-                      border: `1px solid ${brand.border}`,
-                      color: brand.textMuted,
-                    }}
+                    style={{ width: 44, height: 44, backgroundColor: "transparent", border: `1px solid ${brand.border}`, color: brand.textMuted }}
                     onClick={() => setEnvPairs((prev) => prev.filter((_, i) => i !== idx))}
-                    aria-label="Remove environment variable"
+                    aria-label="Remove"
                     title="Remove"
                   >
                     ×
@@ -332,68 +402,19 @@ export default function UserDeploy() {
             </div>
           ) : (
             <div style={{ color: brand.textMuted, fontSize: 13 }}>
-              Add `KEY=VALUE` pairs to inject environment variables into your container.
+              Add KEY=VALUE pairs to inject environment variables into your app.
             </div>
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <FieldLabel>RAM</FieldLabel>
-            <div className="flex flex-wrap gap-2">
-              {ramOptions.map((v) => {
-                const active = String(ramMb) === v;
-                return (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setRamMb(v)}
-                    className="px-4 py-2 rounded-2xl transition-all duration-200 cursor-pointer text-sm font-semibold"
-                    style={{
-                      border: `1px solid ${brand.inputBorder}`,
-                      backgroundColor: active ? `${brand.primaryColor}18` : "transparent",
-                      color: active ? brand.primaryColor : brand.textMuted,
-                    }}
-                  >
-                    {formatRamLabel(v)}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div>
-            <FieldLabel>CPU</FieldLabel>
-            <div className="flex flex-wrap gap-2">
-              {cpuOptions.map((v) => {
-                const active = String(cpuCores) === v;
-                return (
-                  <button
-                    key={v}
-                    type="button"
-                    onClick={() => setCpuCores(v)}
-                    className="px-4 py-2 rounded-2xl transition-all duration-200 cursor-pointer text-sm font-semibold"
-                    style={{
-                      border: `1px solid ${brand.inputBorder}`,
-                      backgroundColor: active ? `${brand.primaryColor}18` : "transparent",
-                      color: active ? brand.primaryColor : brand.textMuted,
-                    }}
-                  >
-                    {v} core
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
         <button
           type="submit"
-          disabled={deploying || isFree || atLimit || !safeContainerName}
+          disabled={deploying || isFree || atLimit || !safeContainerName || !repoUrl}
           className="w-full rounded-2xl py-3 font-semibold transition-all duration-200 cursor-pointer inline-flex items-center justify-center gap-2"
           style={{
             backgroundColor: brand.primaryColor,
             color: brand.darkBg,
-            opacity: deploying || isFree || atLimit || !safeContainerName ? 0.7 : 1,
+            opacity: deploying || isFree || atLimit || !safeContainerName || !repoUrl ? 0.7 : 1,
             border: `1px solid ${brand.primaryColor}`,
           }}
         >
@@ -408,12 +429,7 @@ export default function UserDeploy() {
         </div>
         <div
           className="rounded-xl border p-4 overflow-y-auto"
-          style={{
-            backgroundColor: brand.terminalBg,
-            borderColor: brand.border,
-            minHeight: 200,
-            maxHeight: 420,
-          }}
+          style={{ backgroundColor: brand.terminalBg, borderColor: brand.border, minHeight: 200, maxHeight: 420 }}
         >
           <pre className="whitespace-pre-wrap font-mono text-xs" style={{ color: brand.terminalText }}>
             {output || "—"}
@@ -421,7 +437,11 @@ export default function UserDeploy() {
           <div ref={endRef} />
         </div>
       </div>
+
+      <DeployErrorModal
+        message={showErrorModal ? error : null}
+        onClose={() => setShowErrorModal(false)}
+      />
     </div>
   );
 }
-
