@@ -1,4 +1,5 @@
 const express = require("express");
+const fs = require("fs");
 const { requireAdmin } = require("../middleware/auth");
 const { getPool } = require("../db");
 const config = require("../config");
@@ -224,6 +225,58 @@ router.get("/containers/:id", requireAdmin, async (req, res) => {
     });
   } catch {
     return res.status(500).json({ message: "Failed to load container" });
+  }
+});
+
+router.get("/containers/:id/logs", requireAdmin, async (req, res) => {
+  try {
+    const pool = getPool();
+    const { rows } = await pool.query(
+      `SELECT log_file FROM user_containers WHERE id = $1`,
+      [req.params.id]
+    );
+    const row = rows[0];
+    if (!row) return res.status(404).json({ message: "Container not found" });
+
+    const logFile = row.log_file;
+    if (!logFile || !fs.existsSync(logFile)) {
+      return res.status(404).json({ message: "Log file not found" });
+    }
+
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+
+    let offset = 0;
+    try {
+      const initial = fs.readFileSync(logFile, "utf8");
+      res.write(initial);
+      offset = Buffer.byteLength(initial, "utf8");
+    } catch {}
+
+    const interval = setInterval(() => {
+      try {
+        const stat = fs.statSync(logFile);
+        if (stat.size > offset) {
+          const fd = fs.openSync(logFile, "r");
+          const len = stat.size - offset;
+          const buf = Buffer.alloc(len);
+          fs.readSync(fd, buf, 0, len, offset);
+          fs.closeSync(fd);
+          offset = stat.size;
+          res.write(buf.toString("utf8"));
+        }
+      } catch {}
+    }, 500);
+
+    const cleanup = () => {
+      clearInterval(interval);
+      try { res.end(); } catch {}
+    };
+    req.on("close", cleanup);
+    req.on("end", cleanup);
+  } catch {
+    return res.status(500).json({ message: "Failed to stream logs" });
   }
 });
 

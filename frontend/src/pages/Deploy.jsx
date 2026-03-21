@@ -90,7 +90,7 @@ export default function Deploy() {
   const [repoUrl, setRepoUrl] = useState("");
   const [branch, setBranch] = useState("main");
   const [containerNameInput, setContainerNameInput] = useState("");
-  const [buildCmd, setBuildCmd] = useState("npm install");
+  const [buildCmd, setBuildCmd] = useState("");
   const [startCmd, setStartCmd] = useState("");
   const [envPairs, setEnvPairs] = useState([]);
 
@@ -254,7 +254,7 @@ export default function Deploy() {
                   color: brand.textPrimary,
                   padding: "12px 16px",
                 }}
-                placeholder="npm install"
+                placeholder="auto-detected (for example: npm install && npm run build)"
               />
             </div>
             <div>

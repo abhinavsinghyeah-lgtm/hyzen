@@ -163,6 +163,11 @@ function scoreProjectDir(dir) {
   if (fs.existsSync(path.join(dir, "angular.json"))) score += 3;
   if (fs.existsSync(path.join(dir, "src"))) score += 1;
   if (fs.existsSync(path.join(dir, "index.html"))) score += 1;
+  if (fs.existsSync(path.join(dir, "server.js"))) score += 5;
+  if (fs.existsSync(path.join(dir, "app.js"))) score += 5;
+  if (fs.existsSync(path.join(dir, "index.js"))) score += 4;
+  if (fs.existsSync(path.join(dir, "src", "index.js"))) score += 4;
+  if (/(^|[\\/])(backend|server|api)$/i.test(dir)) score += 3;
   return score;
 }
 
@@ -170,6 +175,9 @@ function detectProjectDir(cloneDir, requestedStartCmd) {
   const cmd = String(requestedStartCmd || "").trim().toLowerCase();
   const rootHasPkg = fs.existsSync(path.join(cloneDir, "package.json"));
   if (rootHasPkg) return cloneDir;
+
+  // If the command explicitly changes directories, preserve repo root so the command can control cwd.
+  if (/\b(cd|pushd)\s+/i.test(cmd)) return cloneDir;
 
   const candidates = [cloneDir, ...listDirectories(cloneDir, 3)];
 
@@ -197,7 +205,14 @@ function detectStartCommand(cloneDir) {
   if (fs.existsSync(pkgPath)) {
     try {
       const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+      const devScript = String(pkg.scripts?.dev || "").toLowerCase();
+      const previewScript = String(pkg.scripts?.preview || "").toLowerCase();
+      const isViteProject =
+        fs.existsSync(path.join(cloneDir, "vite.config.js")) ||
+        devScript.includes("vite") ||
+        previewScript.includes("vite");
       if (pkg.scripts?.start) return "npm start";
+      if (isViteProject && pkg.scripts?.preview) return "npm run preview";
       if (pkg.scripts?.dev) return "npm run dev";
       if (pkg.main) return `node ${pkg.main}`;
     } catch {}
@@ -217,15 +232,37 @@ function detectStartCommand(cloneDir) {
 function detectBuildCommand(cloneDir, requestedBuildCmd) {
   const hasPackageJson = fs.existsSync(path.join(cloneDir, "package.json"));
   const explicit = String(requestedBuildCmd || "").trim();
+  let pkg = null;
+  if (hasPackageJson) {
+    try {
+      pkg = JSON.parse(fs.readFileSync(path.join(cloneDir, "package.json"), "utf8"));
+    } catch {}
+  }
+  const hasBuildScript = Boolean(pkg?.scripts?.build);
+
   if (explicit) {
     const looksLikeDefaultNpm = /^(npm\s+(install|ci))$/i.test(explicit);
     if (!hasPackageJson && looksLikeDefaultNpm) return "";
+    if (looksLikeDefaultNpm && hasBuildScript) {
+      return /^npm\s+ci$/i.test(explicit)
+        ? "npm ci && npm run build"
+        : "npm install && npm run build";
+    }
     return explicit;
   }
-  if (fs.existsSync(path.join(cloneDir, "package-lock.json"))) return "npm ci";
-  if (hasPackageJson) return "npm install";
-  if (fs.existsSync(path.join(cloneDir, "yarn.lock"))) return "yarn install --frozen-lockfile";
-  if (fs.existsSync(path.join(cloneDir, "pnpm-lock.yaml"))) return "pnpm install --frozen-lockfile";
+
+  if (fs.existsSync(path.join(cloneDir, "package-lock.json"))) {
+    return hasBuildScript ? "npm ci && npm run build" : "npm ci";
+  }
+  if (hasPackageJson) {
+    return hasBuildScript ? "npm install && npm run build" : "npm install";
+  }
+  if (fs.existsSync(path.join(cloneDir, "yarn.lock"))) {
+    return hasBuildScript ? "yarn install --frozen-lockfile && yarn build" : "yarn install --frozen-lockfile";
+  }
+  if (fs.existsSync(path.join(cloneDir, "pnpm-lock.yaml"))) {
+    return hasBuildScript ? "pnpm install --frozen-lockfile && pnpm build" : "pnpm install --frozen-lockfile";
+  }
   return "";
 }
 

@@ -311,21 +311,20 @@ export default function UserContainers() {
                         </button>
                         <button
                           type="button"
-                          title="Control"
-                          aria-label="Control"
-                          className="inline-flex items-center justify-center rounded-xl transition-all duration-200 cursor-pointer"
+                          title="Manage"
+                          aria-label="Manage"
+                          className="inline-flex items-center gap-2 rounded-xl transition-all duration-200 cursor-pointer px-3 py-2"
                           style={{
-                            width: 34,
-                            height: 34,
-                            border: `1px solid ${brand.border}`,
+                            border: `1px solid ${brand.primaryColor}66`,
                             backgroundColor: "transparent",
-                            color: brand.textMuted,
+                            color: brand.primaryColor,
                             opacity: loadingId === c.id ? 0.6 : 1,
                           }}
                           disabled={loadingId === c.id}
                           onClick={() => navigate(`/user/containers/${c.id}`)}
                         >
                           <SlidersHorizontal size={16} />
+                          <span style={{ fontSize: 12, fontWeight: 700 }}>Manage</span>
                         </button>
                         <button
                           type="button"

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api, apiStream } from "../api.js";
+import ServerLogPanel from "../components/ServerLogPanel.jsx";
 import { brand } from "../config/brand.js";
 
 function normalizeEnv(envVars) {
@@ -21,8 +22,9 @@ export default function AdminUserContainerControl() {
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [deployOutput, setDeployOutput] = useState("");
+  const [detail, setDetail] = useState(null);
+  const [logRefreshKey, setLogRefreshKey] = useState(0);
 
-  const [owner, setOwner] = useState({ userName: "", userEmail: "" });
   const [form, setForm] = useState({
     containerName: "",
     repoUrl: "",
@@ -39,8 +41,7 @@ export default function AdminUserContainerControl() {
       const res = await api.getJson(`/api/admin/containers/${id}`);
       const c = res?.container;
       if (!c) throw new Error("Container not found");
-
-      setOwner({ userName: c.userName || "", userEmail: c.userEmail || "" });
+      setDetail(c);
       setForm({
         containerName: c.name || "",
         repoUrl: c.repoUrl || "",
@@ -49,12 +50,7 @@ export default function AdminUserContainerControl() {
         startCmd: c.startCmd || "",
         env: normalizeEnv(c.envVars).length ? normalizeEnv(c.envVars) : [{ key: "", value: "" }],
       });
-
-      if (c.suspended) {
-        setInfo(c.suspendedReason || "This container is suspended.");
-      } else {
-        setInfo("");
-      }
+      setInfo(c.suspended ? (c.suspendedReason || "This container is suspended.") : "");
     } catch (e) {
       setError(e?.message || "Failed to load container");
     } finally {
@@ -67,14 +63,14 @@ export default function AdminUserContainerControl() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  function setField(k, v) {
-    setForm((prev) => ({ ...prev, [k]: v }));
+  function setField(key, value) {
+    setForm((prev) => ({ ...prev, [key]: value }));
   }
 
   function setEnvAt(idx, key, value) {
     setForm((prev) => ({
       ...prev,
-      env: prev.env.map((it, i) => (i === idx ? { ...it, [key]: value } : it)),
+      env: prev.env.map((item, index) => (index === idx ? { ...item, [key]: value } : item)),
     }));
   }
 
@@ -83,11 +79,11 @@ export default function AdminUserContainerControl() {
   }
 
   function removeEnv(idx) {
-    setForm((prev) => ({ ...prev, env: prev.env.filter((_, i) => i !== idx) }));
+    setForm((prev) => ({ ...prev, env: prev.env.filter((_, index) => index !== idx) }));
   }
 
   const cleanEnv = useMemo(
-    () => (form.env || []).filter((x) => String(x?.key || "").trim()),
+    () => (form.env || []).filter((item) => String(item?.key || "").trim()),
     [form.env]
   );
 
@@ -134,20 +130,19 @@ export default function AdminUserContainerControl() {
           env: cleanEnv,
         }),
       });
-
       const reader = res.body?.getReader();
       if (!reader) throw new Error("No deploy output available");
       const decoder = new TextDecoder();
       let acc = "";
       // eslint-disable-next-line no-constant-condition
       while (true) {
-        const out = await reader.read();
-        if (out.done) break;
-        acc += decoder.decode(out.value, { stream: true });
+        const next = await reader.read();
+        if (next.done) break;
+        acc += decoder.decode(next.value, { stream: true });
         setDeployOutput(acc);
       }
-
       setInfo("Redeploy finished.");
+      setLogRefreshKey((prev) => prev + 1);
       await load();
     } catch (e) {
       setError(e?.message || "Redeploy failed");
@@ -156,20 +151,29 @@ export default function AdminUserContainerControl() {
     }
   }
 
-  async function toggleSuspend() {
+  async function runAction(action) {
     setSaving(true);
     setError("");
     setInfo("");
     try {
-      const detail = await api.getJson(`/api/admin/containers/${id}`);
-      const isSuspended = Boolean(detail?.container?.suspended);
-      await api.request(`/api/admin/containers/${id}/${isSuspended ? "unsuspend" : "suspend"}`, { method: "POST" });
+      await api.request(`/api/admin/containers/${id}/${action}`, { method: "POST" });
+      if (action === "delete") {
+        navigate("/admin/containers");
+        return;
+      }
+      setInfo(`Container ${action} completed.`);
+      setLogRefreshKey((prev) => prev + 1);
       await load();
     } catch (e) {
-      setError(e?.message || "Failed to update suspension");
+      setError(e?.message || `Failed to ${action}`);
     } finally {
       setSaving(false);
     }
+  }
+
+  async function toggleSuspend() {
+    if (!detail) return;
+    await runAction(detail.suspended ? "unsuspend" : "suspend");
   }
 
   if (loading) {
@@ -180,12 +184,49 @@ export default function AdminUserContainerControl() {
     );
   }
 
+  const statusColor = detail?.suspended
+    ? brand.warningColor
+    : detail?.status === "running"
+      ? brand.onlineColor
+      : brand.offlineColor;
+
   return (
     <div className="space-y-5">
-      <div>
-        <div className="text-2xl font-bold" style={{ color: brand.textPrimary }}>User Server Control</div>
-        <div className="text-sm mt-1" style={{ color: brand.textMuted }}>
-          Owner: {owner.userName || "-"} ({owner.userEmail || "-"})
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+          <div className="text-2xl font-bold" style={{ color: brand.textPrimary }}>User Server Control</div>
+          <div className="text-sm mt-1" style={{ color: brand.textMuted }}>
+            Owner: {detail?.userName || "-"} ({detail?.userEmail || "-"})
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-3">
+          {detail?.url ? (
+            <a href={detail.url} target="_blank" rel="noreferrer" className="rounded-xl px-4 py-2 font-semibold" style={{ border: `1px solid ${brand.primaryColor}66`, color: brand.primaryColor }}>
+              Open App
+            </a>
+          ) : null}
+          <button type="button" className="rounded-xl px-4 py-2 font-semibold" style={{ border: `1px solid ${brand.border}`, color: brand.textMuted }} onClick={() => navigate("/admin/containers")}>
+            Back
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border p-4 flex flex-wrap gap-4" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
+        <div>
+          <div style={{ color: brand.textMuted, fontSize: 12 }}>Name</div>
+          <div style={{ color: brand.textPrimary, fontWeight: 700 }}>{detail?.name || "-"}</div>
+        </div>
+        <div>
+          <div style={{ color: brand.textMuted, fontSize: 12 }}>Status</div>
+          <div style={{ color: statusColor, fontWeight: 700 }}>{detail?.suspended ? "Suspended" : detail?.status || "-"}</div>
+        </div>
+        <div>
+          <div style={{ color: brand.textMuted, fontSize: 12 }}>Branch</div>
+          <div style={{ color: brand.textPrimary, fontWeight: 700 }}>{detail?.branch || "main"}</div>
+        </div>
+        <div className="min-w-[240px]">
+          <div style={{ color: brand.textMuted, fontSize: 12 }}>Repo</div>
+          <div style={{ color: brand.textPrimary, fontWeight: 700, wordBreak: "break-all" }}>{detail?.repoUrl || "-"}</div>
         </div>
       </div>
 
@@ -202,6 +243,24 @@ export default function AdminUserContainerControl() {
       ) : null}
 
       <div className="rounded-2xl border p-5 space-y-4" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
+        <div className="flex flex-wrap gap-3">
+          <button type="button" disabled={saving || detail?.suspended} className="rounded-xl px-4 py-2 font-semibold" style={{ backgroundColor: brand.primaryColor, border: `1px solid ${brand.primaryColor}`, color: brand.darkBg, opacity: saving || detail?.suspended ? 0.7 : 1 }} onClick={() => runAction("start")}>
+            Start
+          </button>
+          <button type="button" disabled={saving} className="rounded-xl px-4 py-2 font-semibold" style={{ border: `1px solid ${brand.border}`, color: brand.textPrimary, opacity: saving ? 0.7 : 1 }} onClick={() => runAction("stop")}>
+            Stop
+          </button>
+          <button type="button" disabled={saving || detail?.suspended} className="rounded-xl px-4 py-2 font-semibold" style={{ border: `1px solid ${brand.border}`, color: brand.textPrimary, opacity: saving || detail?.suspended ? 0.7 : 1 }} onClick={() => runAction("restart")}>
+            Restart
+          </button>
+          <button type="button" disabled={saving} className="rounded-xl px-4 py-2 font-semibold" style={{ border: `1px solid ${detail?.suspended ? brand.onlineColor : brand.warningColor}`, color: detail?.suspended ? brand.onlineColor : brand.warningColor, opacity: saving ? 0.7 : 1 }} onClick={toggleSuspend}>
+            {detail?.suspended ? "Unsuspend" : "Suspend"}
+          </button>
+          <button type="button" disabled={saving} className="rounded-xl px-4 py-2 font-semibold" style={{ border: `1px solid ${brand.offlineColor}66`, color: brand.offlineColor, opacity: saving ? 0.7 : 1 }} onClick={() => runAction("delete")}>
+            Delete
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label className="space-y-2">
             <div style={{ color: brand.textMuted, fontSize: 12, fontWeight: 700 }}>App Name</div>
@@ -241,16 +300,20 @@ export default function AdminUserContainerControl() {
         </div>
 
         <div className="flex flex-wrap gap-3 pt-2">
-          <button type="button" disabled={saving} className="rounded-xl px-5 py-2 font-semibold" style={{ backgroundColor: brand.primaryColor, border: `1px solid ${brand.primaryColor}`, color: brand.darkBg, opacity: saving ? 0.7 : 1 }} onClick={saveConfig}>Save Config</button>
-          <button type="button" disabled={saving} className="rounded-xl px-5 py-2 font-semibold" style={{ backgroundColor: `${brand.primaryColor}20`, border: `1px solid ${brand.primaryColor}55`, color: brand.primaryColor, opacity: saving ? 0.7 : 1 }} onClick={redeploy}>Redeploy Latest Commit</button>
-          <button type="button" disabled={saving} className="rounded-xl px-5 py-2 font-semibold" style={{ backgroundColor: "transparent", border: `1px solid ${brand.border}`, color: brand.textMuted }} onClick={toggleSuspend}>Suspend or Unsuspend</button>
-          <button type="button" disabled={saving} className="rounded-xl px-5 py-2 font-semibold" style={{ backgroundColor: "transparent", border: `1px solid ${brand.border}`, color: brand.textMuted }} onClick={() => navigate("/admin/containers")}>Back</button>
+          <button type="button" disabled={saving} className="rounded-xl px-5 py-2 font-semibold" style={{ backgroundColor: brand.primaryColor, border: `1px solid ${brand.primaryColor}`, color: brand.darkBg, opacity: saving ? 0.7 : 1 }} onClick={saveConfig}>
+            Save Config
+          </button>
+          <button type="button" disabled={saving || detail?.suspended} className="rounded-xl px-5 py-2 font-semibold" style={{ backgroundColor: `${brand.primaryColor}20`, border: `1px solid ${brand.primaryColor}55`, color: brand.primaryColor, opacity: saving || detail?.suspended ? 0.7 : 1 }} onClick={redeploy}>
+            Redeploy Latest Commit
+          </button>
         </div>
       </div>
 
+      <ServerLogPanel streamPath={`/api/admin/containers/${id}/logs`} refreshKey={logRefreshKey} />
+
       <div className="rounded-2xl border p-4" style={{ backgroundColor: brand.terminalBg, borderColor: brand.border }}>
         <div style={{ color: brand.textMuted, fontSize: 12, marginBottom: 8 }}>Redeploy Output</div>
-        <pre className="whitespace-pre-wrap text-xs" style={{ color: brand.terminalText, minHeight: 160 }}>{deployOutput || "No output yet."}</pre>
+        <pre className="whitespace-pre-wrap text-xs" style={{ color: brand.terminalText, minHeight: 160 }}>{deployOutput || "No redeploy output yet."}</pre>
       </div>
     </div>
   );
