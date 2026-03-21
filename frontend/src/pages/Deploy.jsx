@@ -1,3 +1,4 @@
+import DockerfileHelpModal from "../components/DockerfileHelpModal.jsx";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Rocket } from "lucide-react";
 import { apiStream } from "../api.js";
@@ -36,6 +37,7 @@ export default function Deploy() {
   const endRef = useRef(null);
   const accRef = useRef("");
 
+  const [showDockerfileHelp, setShowDockerfileHelp] = useState(false);
   const safeContainerName = sanitizeContainerName(containerNameInput);
 
   const [envPairs, setEnvPairs] = useState([]);
@@ -87,9 +89,12 @@ export default function Deploy() {
         }
       }
 
+    if (accRef.current.includes("No Dockerfile found")) setShowDockerfileHelp(true);
       setOutput(accRef.current);
     } catch (err) {
-      setError(err?.message || "Deployment failed");
+      const msg = err?.message || "Deployment failed";
+      setError(msg);
+      if (msg.includes("No Dockerfile found")) setShowDockerfileHelp(true);
     } finally {
       setDeploying(false);
     }
@@ -336,7 +341,7 @@ export default function Deploy() {
         </button>
       </form>
 
-      <div
+<div
         className="rounded-2xl border p-5"
         style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}
       >
@@ -360,6 +365,11 @@ export default function Deploy() {
           <div ref={endRef} />
         </div>
       </div>
+
+      <DockerfileHelpModal
+        open={showDockerfileHelp}
+        onClose={() => setShowDockerfileHelp(false)}
+      />
     </div>
   );
 }
