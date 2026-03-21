@@ -231,15 +231,20 @@ app.get("/api/vps/stats", requireAdmin, async (req, res) => {
       return;
     }
 
-    const [load, mem, disks] = await Promise.all([
+    const [load, mem, disks, cpu, time] = await Promise.all([
       systeminformation.currentLoad(),
       systeminformation.mem(),
       systeminformation.fsSize(),
+      systeminformation.cpu(),
+      systeminformation.time(),
     ]);
 
     const cpuPercent = Math.max(0, Math.min(100, Number(load.currentLoad || 0)));
+    const totalCores = Number(cpu?.cores || load?.cpus?.length || 0);
+    const usedCores = Number(((cpuPercent / 100) * totalCores).toFixed(2));
     const ramUsedBytes = Number(mem.used || 0);
     const ramTotalBytes = Number(mem.total || 0);
+    const ramFreeBytes = Number(mem.available || 0);
 
     // Prefer root if present; otherwise take the first filesystem entry.
     const root =
@@ -248,11 +253,31 @@ app.get("/api/vps/stats", requireAdmin, async (req, res) => {
 
     const diskUsedBytes = Number(root?.used || 0);
     const diskTotalBytes = Number(root?.size || 0);
+    const diskFreeBytes = Math.max(0, diskTotalBytes - diskUsedBytes);
+    const uptimeSeconds = Number(time?.uptime || 0);
 
     const value = {
       cpuPercent,
-      ram: { usedBytes: ramUsedBytes, totalBytes: ramTotalBytes },
-      disk: { usedBytes: diskUsedBytes, totalBytes: diskTotalBytes },
+      cpu: {
+        usedCores,
+        totalCores,
+        processor: [cpu?.manufacturer, cpu?.brand].filter(Boolean).join(" ").trim() || "Unknown CPU",
+        speedGHz: Number(cpu?.speed || 0),
+      },
+      ram: {
+        usedBytes: ramUsedBytes,
+        totalBytes: ramTotalBytes,
+        freeBytes: ramFreeBytes,
+      },
+      disk: {
+        usedBytes: diskUsedBytes,
+        totalBytes: diskTotalBytes,
+        freeBytes: diskFreeBytes,
+      },
+      system: {
+        uptimeSeconds,
+        hostname: String(process.env.HOSTNAME || ""),
+      },
     };
 
     vpsCache = { ts: Date.now(), value };
