@@ -89,8 +89,8 @@ export default function Deploy() {
         }
       }
 
+    setOutput(accRef.current);
     if (accRef.current.includes("No Dockerfile found")) setShowDockerfileHelp(true);
-      setOutput(accRef.current);
     } catch (err) {
       const msg = err?.message || "Deployment failed";
       setError(msg);
