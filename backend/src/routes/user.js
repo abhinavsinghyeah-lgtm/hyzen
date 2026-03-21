@@ -12,6 +12,18 @@ const { invalidate } = require("../containersCache");
 
 const router = express.Router();
 
+function getPublicBaseUrl(req) {
+  const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "http")
+    .split(",")[0]
+    .trim();
+  const rawHost = String(req.headers["x-forwarded-host"] || req.headers.host || "")
+    .split(",")[0]
+    .trim();
+  const hostOnly = rawHost.replace(/:\d+$/, "");
+  if (!hostOnly) return "";
+  return `${proto}://${hostOnly}`;
+}
+
 function daysRemaining(planExpiresAt) {
   if (!planExpiresAt) return 0;
   const expires = new Date(planExpiresAt);
@@ -187,6 +199,7 @@ router.post("/deploy", requireUser, async (req, res) => {
       env,
       buildCmd,
       startCmd,
+      publicBaseUrl: getPublicBaseUrl(req),
       onLog: (s) => { try { res.write(s); } catch {} },
     });
 
@@ -231,6 +244,7 @@ router.post("/containers/:id/start", requireUser, async (req, res) => {
       startCmd: row.start_cmd,
       logFile: row.log_file,
       envPairs: row.env_vars || [],
+      publicBaseUrl: getPublicBaseUrl(req),
     });
 
     await pool.query(
@@ -286,6 +300,7 @@ router.post("/containers/:id/restart", requireUser, async (req, res) => {
       startCmd: row.start_cmd,
       logFile: row.log_file,
       envPairs: row.env_vars || [],
+      publicBaseUrl: getPublicBaseUrl(req),
     });
 
     await pool.query(
@@ -376,6 +391,7 @@ router.put("/containers/:id/env", requireUser, async (req, res) => {
       startCmd: row.start_cmd,
       logFile: row.log_file,
       envPairs,
+      publicBaseUrl: getPublicBaseUrl(req),
     });
 
     await pool.query(

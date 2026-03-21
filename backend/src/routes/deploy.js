@@ -3,6 +3,18 @@ const router = express.Router();
 const { getPool } = require("../db");
 const { deployProcess } = require("../deployService");
 
+function getPublicBaseUrl(req) {
+  const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "http")
+    .split(",")[0]
+    .trim();
+  const rawHost = String(req.headers["x-forwarded-host"] || req.headers.host || "")
+    .split(",")[0]
+    .trim();
+  const hostOnly = rawHost.replace(/:\d+$/, "");
+  if (!hostOnly) return "";
+  return `${proto}://${hostOnly}`;
+}
+
 router.post("/", async (req, res) => {
   res.setHeader("Content-Type", "text/plain; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -23,6 +35,7 @@ router.post("/", async (req, res) => {
       env,
       buildCmd,
       startCmd,
+      publicBaseUrl: getPublicBaseUrl(req),
       onLog: (s) => { try { res.write(s); } catch {} },
     });
 

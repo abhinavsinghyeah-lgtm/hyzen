@@ -246,6 +246,12 @@ function runShellCommand(command, { cwd, env, log }) {
   });
 }
 
+function buildServiceUrl(hostPort, publicBaseUrl) {
+  const base = String(publicBaseUrl || "").trim();
+  if (!base) return `http://localhost:${hostPort}`;
+  return `${base.replace(/\/+$/, "")}:${hostPort}`;
+}
+
 // ─── Process helpers ──────────────────────────────────────────────────────────
 
 /** Returns true if a process with the given PID is alive. */
@@ -372,6 +378,7 @@ async function deployProcess({
   env,
   buildCmd,
   startCmd,
+  publicBaseUrl,
   onLog,
 }) {
   const log = (s) => { try { onLog?.(s); } catch {} };
@@ -421,7 +428,7 @@ async function deployProcess({
 
   // 4. Port
   const hostPort = await getRandomAvailablePort(3000, 9000);
-  const url = `http://localhost:${hostPort}`;
+  const url = buildServiceUrl(hostPort, publicBaseUrl);
 
   // 5. Env — inject PORT
   const envPairs = envInputToPairs(env);
@@ -473,7 +480,7 @@ async function deployProcess({
  * Re-runs an already-deployed app (for restart / start-after-stop).
  * Returns { pid, url }.
  */
-async function rerunProcess({ workDir, startCmd, logFile, envPairs }) {
+async function rerunProcess({ workDir, startCmd, logFile, envPairs, publicBaseUrl }) {
   if (!workDir || !fs.existsSync(workDir)) {
     throw new Error(
       "Work directory not found. Please re-deploy the project from scratch."
@@ -501,7 +508,7 @@ async function rerunProcess({ workDir, startCmd, logFile, envPairs }) {
     throw new Error(`Process exited immediately (code ${child.exitCode ?? "?"}). Check start command.`);
   }
 
-  return { pid: child.pid, url: `http://localhost:${hostPort}` };
+  return { pid: child.pid, url: buildServiceUrl(hostPort, publicBaseUrl) };
 }
 
 // ─── Exports ──────────────────────────────────────────────────────────────────

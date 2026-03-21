@@ -5,6 +5,18 @@ const { getPool } = require("../db");
 const { invalidate } = require("../containersCache");
 const { killProcess, isPidRunning, rerunProcess } = require("../deployService");
 
+function getPublicBaseUrl(req) {
+  const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "http")
+    .split(",")[0]
+    .trim();
+  const rawHost = String(req.headers["x-forwarded-host"] || req.headers.host || "")
+    .split(",")[0]
+    .trim();
+  const hostOnly = rawHost.replace(/:\d+$/, "");
+  if (!hostOnly) return "";
+  return `${proto}://${hostOnly}`;
+}
+
 // ── GET / — list all deployments ─────────────────────────────────────────────
 router.get("/", async (req, res) => {
   try {
@@ -57,6 +69,7 @@ router.post("/:id/start", async (req, res) => {
       startCmd: row.start_cmd,
       logFile: row.log_file,
       envPairs: [],
+      publicBaseUrl: getPublicBaseUrl(req),
     });
 
     await pool.query(
@@ -111,6 +124,7 @@ router.post("/:id/restart", async (req, res) => {
       startCmd: row.start_cmd,
       logFile: row.log_file,
       envPairs: [],
+      publicBaseUrl: getPublicBaseUrl(req),
     });
 
     await pool.query(
