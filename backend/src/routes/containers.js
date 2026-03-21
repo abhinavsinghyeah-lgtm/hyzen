@@ -32,8 +32,9 @@ router.get("/", async (req, res) => {
     const value = await getCachedContainers({
       fetcher: async () => {
         const settings = await getSettings().catch(() => null);
-        const docker = dockerFromSettings(settings);
+const docker = dockerFromSettings(settings);
 
+const containers = await docker.listContainers({ all: true });
 const results = await Promise.all(containers.map(async (c) => {
   const container = docker.getContainer(c.Id);
   let ramUsageBytes = null;
