@@ -10,7 +10,6 @@ const { deployToDocker } = require("../deployService");
 const { invalidate } = require("../containersCache");
 
 const Docker = require("dockerode");
-const tarfs = require("tar-fs");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
@@ -21,7 +20,7 @@ const router = express.Router();
 const execFileAsync = util.promisify(execFile);
 
 function dockerInstance() {
-  return new Docker({ host: "localhost", port: 2375 });
+  return new Docker({ socketPath: process.env.DOCKER_SOCKET || "/var/run/docker.sock" });
 }
 
 function daysRemaining(planExpiresAt) {

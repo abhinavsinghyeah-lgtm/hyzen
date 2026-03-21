@@ -1,7 +1,5 @@
 const express = require("express");
 const Docker = require("dockerode");
-const jwt = require("jsonwebtoken");
-const tarfs = require("tar-fs");
 const path = require("path");
 const os = require("os");
 const fs = require("fs");
@@ -15,10 +13,9 @@ const { invalidate } = require("../containersCache");
 
 const execFileAsync = util.promisify(execFile);
 
+// WITH:
 function dockerFromSettings() {
-  // Temporary: always connect to local Docker TCP for testing.
-  const docker = new Docker({ host: "localhost", port: 2375 });
-  return docker;
+  return new Docker({ socketPath: process.env.DOCKER_SOCKET || "/var/run/docker.sock" });
 }
 
 function parseCpuToNanoCpus(cpu) {
@@ -408,31 +405,19 @@ router.post("/", async (req, res) => {
     res.write(`Building Docker image ${imageTag}...\n`);
     res.write(`Build will output image: ${imageTag}\n`);
 
-    const pack = tarfs.pack(cloneDir);
     await new Promise((resolve, reject) => {
-      docker.buildImage(pack, { t: imageTag }, (err, output) => {
-        if (err) return reject(err);
-        docker.modem.followProgress(
-          output,
-          (err2) => (err2 ? reject(err2) : resolve()),
-          (event) => {
-            const line = (event && (event.stream || event.status)) || "";
-            if (line) res.write(String(line));
-          }
-        );
+      const buildProcess = require('child_process').spawn(
+        'docker', ['build', '-t', imageTag, cloneDir],
+        { stdio: ['ignore', 'pipe', 'pipe'] }
+      );
+      buildProcess.stdout.on('data', (data) => res.write(data.toString()));
+      buildProcess.stderr.on('data', (data) => res.write(data.toString()));
+      buildProcess.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`Docker build failed with exit code ${code}`));
       });
     });
     res.write(`Build complete.\n`);
-
-    // Docker build may not have the image fully indexed yet; wait a moment.
-    await new Promise((r) => setTimeout(r, 5000));
-
-    res.write(`Verifying built image exists: ${imageTag}\n`);
-    await assertImageAvailable(docker, imageTag, {
-      attempts: 3,
-      delayMs: 1000,
-      onLog: (s) => res.write(String(s)),
-    });
 
     // Stop/remove existing container (use safeName).
     const existing = await containerExists(docker, safeName);

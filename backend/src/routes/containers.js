@@ -5,9 +5,7 @@ const { getSettings } = require("../db");
 const { getCachedContainers, invalidate } = require("../containersCache");
 
 function dockerFromSettings() {
-  // Temporary: always connect to local Docker TCP for testing.
-  const docker = new Docker({ host: "localhost", port: 2375 });
-  return docker;
+  return new Docker({ socketPath: process.env.DOCKER_SOCKET || "/var/run/docker.sock" });
 }
 
 function toUiStatus(state) {
