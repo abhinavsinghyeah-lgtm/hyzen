@@ -16,7 +16,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   const glowBlue = accentWithOpacity(brand.accentColor, "2b");
-  const glowOrange = accentWithOpacity(brand.primaryColor, "30");
+  const glowPrimary = accentWithOpacity(brand.primaryColor, "26");
   const fromPath = location.state?.from?.pathname || "";
 
   function routeAfterUserLogin(token) {
@@ -75,28 +75,28 @@ export default function Login() {
       className="min-h-screen flex items-center justify-center p-6"
       style={{
         backgroundColor: brand.darkBg,
-        backgroundImage: `radial-gradient(circle at 20% 15%, ${glowOrange} 0%, transparent 50%), radial-gradient(circle at 86% 10%, ${glowBlue} 0%, transparent 52%)`,
+        backgroundImage: `radial-gradient(circle at 16% 12%, ${glowPrimary} 0%, transparent 45%), radial-gradient(circle at 82% 10%, ${glowBlue} 0%, transparent 48%)`,
         transition: "all 200ms",
       }}
     >
       <div
         className="w-full max-w-[460px] backdrop-blur-xl rounded-[28px] border transition-all duration-200"
         style={{
-          backgroundColor: "rgba(7, 14, 24, 0.84)",
+          backgroundColor: "rgba(11, 19, 32, 0.94)",
           borderColor: brand.border,
-          boxShadow: "0 26px 54px rgba(2, 9, 18, 0.56)",
+          boxShadow: "0 14px 40px rgba(2, 9, 18, 0.5)",
         }}
       >
         <div className="p-8">
           <div className="mb-6">
-            <div className="inline-flex items-center px-3 py-1 rounded-full border mb-4" style={{ borderColor: `${brand.primaryColor}55`, color: brand.primaryColor, fontSize: 11, fontWeight: 700, letterSpacing: 0.8 }}>
-              SINGLE SIGN IN
+            <div className="inline-flex items-center px-3 py-1 rounded-full border mb-4" style={{ borderColor: `${brand.primaryColor}55`, color: brand.primaryColor, fontSize: 11, fontWeight: 700, letterSpacing: 0.6 }}>
+              SECURE LOGIN
             </div>
             <div className="text-2xl font-extrabold tracking-tight" style={{ color: brand.textPrimary }}>
               {brand.name}
             </div>
             <div className="mt-2 text-sm" style={{ color: brand.textMuted }}>
-              One login for everyone. Admins get full controls automatically.
+              One account entry point. Access level is detected after login.
             </div>
           </div>
 
@@ -156,10 +156,10 @@ export default function Login() {
               disabled={loading}
               className="w-full rounded-xl py-3 font-semibold transition-all duration-200"
               style={{
-                backgroundImage: brand.accentGradient,
-                color: "#061220",
+                background: brand.primaryColor,
+                color: "#f8fbff",
                 opacity: loading ? 0.7 : 1,
-                boxShadow: "0 14px 30px rgba(255, 130, 42, 0.24)",
+                boxShadow: "0 10px 22px rgba(59, 130, 246, 0.32)",
               }}
             >
               {loading ? "Signing in..." : "Sign in"}
