@@ -3,12 +3,12 @@
 @tailwind utilities;
 
 :root {
-  --hyzen-bg: #050a14;
-  --hyzen-surface: #0b1320;
-  --hyzen-border: #1b2636;
-  --hyzen-text: #e8efff;
-  --hyzen-muted: #91a4be;
-  --hyzen-blue: #3b82f6;
+  --hyzen-bg: #040914;
+  --hyzen-surface: #0a121f;
+  --hyzen-border: #1a2435;
+  --hyzen-text: #f3f7ff;
+  --hyzen-muted: #8a9ab3;
+  --hyzen-blue: #3f6ff0;
 }
 
 html,
@@ -22,7 +22,7 @@ body {
   overflow-x: hidden;
   color: var(--hyzen-text);
   background-color: var(--hyzen-bg);
-  background-image: linear-gradient(180deg, #050a14 0%, #040914 100%);
+  background-image: linear-gradient(180deg, #040914 0%, #030814 100%);
   font-family: "Manrope", "Segoe UI", system-ui, sans-serif;
   letter-spacing: -0.005em;
 }
@@ -54,12 +54,12 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.55), 0 0 0 4px rgba(59, 130, 246, 0.16);
+  box-shadow: 0 0 0 1px rgba(63, 111, 240, 0.6), 0 0 0 4px rgba(63, 111, 240, 0.16);
 }
 
 .hyzen-sidebar {
   padding: 0;
-  background: #060d18;
+  background: #060f1b;
   border-right: 1px solid var(--hyzen-border);
 }
 

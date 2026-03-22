@@ -79,6 +79,7 @@ export default function UserDeploy() {
   const [buildCmd, setBuildCmd] = useState("");
   const [startCmd, setStartCmd] = useState("");
   const [envPairs, setEnvPairs] = useState([]);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const [deploying, setDeploying] = useState(false);
   const [deploySuccess, setDeploySuccess] = useState(false);
@@ -177,9 +178,9 @@ export default function UserDeploy() {
       <div
         className="rounded-[24px] border p-6"
         style={{
-          backgroundImage: "radial-gradient(130% 160% at 0% 0%, rgba(255,157,46,0.12) 0%, rgba(255,157,46,0.02) 35%, transparent 60%), linear-gradient(180deg, rgba(8,16,28,0.88), rgba(5,11,20,0.88))",
+          backgroundColor: brand.cardBg,
           borderColor: brand.border,
-          boxShadow: "0 20px 46px rgba(3,10,20,0.46)",
+          boxShadow: "none",
         }}
       >
         <div className="inline-flex items-center px-3 py-1 rounded-full border mb-2" style={{ borderColor: `${brand.primaryColor}55`, color: brand.primaryColor, fontSize: 11, fontWeight: 700, letterSpacing: 0.8 }}>
@@ -187,7 +188,7 @@ export default function UserDeploy() {
         </div>
         <div className="text-3xl font-black" style={{ color: brand.textPrimary }}>Deploy a Server</div>
         <div className="text-sm mt-1" style={{ color: brand.textMuted }}>
-          Point to any public GitHub repo — we clone, build, and run it for you.
+          Keep it simple: repo URL + server name. Use advanced only if needed.
         </div>
       </div>
 
@@ -259,10 +260,19 @@ export default function UserDeploy() {
                 )}
               </div>
             </div>
+
+            <button
+              type="button"
+              className="px-3 py-2 text-sm font-semibold transition-all duration-200"
+              style={{ border: `1px solid ${brand.border}`, color: brand.textPrimary, backgroundColor: "transparent" }}
+              onClick={() => setShowAdvanced((v) => !v)}
+            >
+              {showAdvanced ? "Hide Advanced" : "Show Advanced"}
+            </button>
           </div>
 
           {/* Commands */}
-          <div className="rounded-[22px] border p-5 space-y-4" style={{ backgroundColor: brand.cardBg, borderColor: brand.border, boxShadow: "0 10px 28px rgba(2,9,19,0.3)" }}>
+          {showAdvanced && <div className="rounded-[22px] border p-5 space-y-4" style={{ backgroundColor: brand.cardBg, borderColor: brand.border, boxShadow: "none" }}>
             <div style={{ color: brand.textPrimary, fontSize: 14, fontWeight: 800 }}>Build & Start</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -277,10 +287,10 @@ export default function UserDeploy() {
             <div style={{ color: brand.textMuted, fontSize: 12 }}>
               Leave blank to auto-detect from <span style={{ fontFamily: "monospace", color: brand.textPrimary }}>package.json</span>.
             </div>
-          </div>
+          </div>}
 
           {/* Env vars */}
-          <div className="rounded-[22px] border p-5 space-y-3" style={{ backgroundColor: brand.cardBg, borderColor: brand.border, boxShadow: "0 10px 28px rgba(2,9,19,0.3)" }}>
+          {showAdvanced && <div className="rounded-[22px] border p-5 space-y-3" style={{ backgroundColor: brand.cardBg, borderColor: brand.border, boxShadow: "none" }}>
             <div className="flex items-center justify-between gap-4">
               <div style={{ color: brand.textPrimary, fontSize: 14, fontWeight: 800 }}>Environment Variables</div>
               <button
@@ -306,7 +316,7 @@ export default function UserDeploy() {
                 ))}
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Deploy button */}
           <button
@@ -316,9 +326,9 @@ export default function UserDeploy() {
             style={{
               backgroundImage: canDeploy ? brand.accentGradient : undefined,
               backgroundColor: canDeploy ? undefined : "rgba(26,42,61,0.6)",
-              color: canDeploy ? "#061220" : brand.textMuted,
-              border: canDeploy ? "1px solid rgba(255,157,46,0.5)" : `1px solid ${brand.border}`,
-              boxShadow: canDeploy ? "0 14px 30px rgba(255,130,42,0.22)" : "none",
+              color: canDeploy ? "#ffffff" : brand.textMuted,
+              border: canDeploy ? `1px solid ${brand.primaryColor}` : `1px solid ${brand.border}`,
+              boxShadow: "none",
               cursor: canDeploy ? "pointer" : "not-allowed",
             }}
           >
@@ -340,7 +350,7 @@ export default function UserDeploy() {
                 { label: "Public repos only", desc: "Private repos aren't supported yet. Make sure your repo is public." },
                 { label: "Auto-detect", desc: "If no build/start command is given, we read npm scripts from package.json." },
               ].map((tip) => (
-                <div key={tip.label} className="rounded-xl p-3" style={{ backgroundColor: "rgba(7,14,24,0.7)", border: `1px solid ${brand.border}` }}>
+                <div key={tip.label} className="rounded-xl p-3" style={{ backgroundColor: "#091426", border: `1px solid ${brand.border}` }}>
                   <div style={{ color: brand.primaryColor, fontSize: 11, fontWeight: 700, marginBottom: 4 }}>{tip.label}</div>
                   <div style={{ color: brand.textMuted, fontSize: 12, lineHeight: 1.5 }}>{tip.desc}</div>
                 </div>

@@ -69,10 +69,10 @@ export default function UserSidebar() {
   return (
     <aside
       className="transition-all duration-200 hyzen-sidebar"
-      style={{ width: 198 }}
+      style={{ width: 212 }}
     >
       <div
-        className="relative h-full flex flex-col px-3 py-5 hyzen-sidebar-shell"
+        className="relative h-full flex flex-col px-3 py-6 hyzen-sidebar-shell"
         style={{ backgroundImage: brand.sidebarBg, borderColor: brand.border }}
       >
         {/* Logo */}
@@ -120,12 +120,12 @@ export default function UserSidebar() {
               style={({ isActive }) => ({
                 color: isActive ? brand.textPrimary : brand.textMuted,
                 backgroundImage: "none",
-                border: isActive ? `1px solid ${brand.primaryColor}66` : `1px solid transparent`,
+                border: isActive ? `1px solid ${brand.primaryColor}44` : `1px solid transparent`,
                 boxShadow: "none",
                 backgroundColor: isActive
                   ? brand.sidebarActiveBg
                   : hoveredTo === item.to
-                    ? "rgba(59,130,246,0.08)"
+                    ? "rgba(63,111,240,0.08)"
                     : "transparent",
               })}
               onMouseEnter={() => setHoveredTo(item.to)}
@@ -146,11 +146,11 @@ export default function UserSidebar() {
               style={({ isActive }) => ({
                 color: isActive ? brand.primaryColor : brand.textMuted,
                 backgroundImage: "none",
-                border: isActive ? `1px solid ${brand.primaryColor}66` : `1px solid transparent`,
+                border: isActive ? `1px solid ${brand.primaryColor}44` : `1px solid transparent`,
                 backgroundColor: isActive
                   ? brand.sidebarActiveBg
                   : hoveredTo === "/overview"
-                    ? "rgba(59,130,246,0.08)"
+                    ? "rgba(63,111,240,0.08)"
                     : "transparent",
               })}
               onMouseEnter={() => setHoveredTo("/overview")}
@@ -170,7 +170,7 @@ export default function UserSidebar() {
             style={{
               color: brand.textMuted,
               border: `1px solid transparent`,
-              backgroundColor: hoveredTo === "__logout__" ? "rgba(59,130,246,0.08)" : "transparent",
+              backgroundColor: hoveredTo === "__logout__" ? "rgba(63,111,240,0.08)" : "transparent",
             }}
             onMouseEnter={() => setHoveredTo("__logout__")}
             onMouseLeave={() => setHoveredTo(null)}
