@@ -15,7 +15,6 @@ import ContainerControl from "./pages/ContainerControl.jsx";
 import AdminUserContainers from "./pages/AdminUserContainers.jsx";
 import AdminUserContainerControl from "./pages/AdminUserContainerControl.jsx";
 
-import UserLogin from "./pages/User/Login.jsx";
 import UserRegister from "./pages/User/Register.jsx";
 import UserDashboard from "./pages/User/Dashboard.jsx";
 import UserContainers from "./pages/User/Containers.jsx";
@@ -37,7 +36,7 @@ function RequireAdminAuth({ children }) {
 function RequireUserAuth({ children }) {
   const token = localStorage.getItem("hyzen_user_jwt");
   const location = useLocation();
-  if (!token) return <Navigate to="/user/login" replace state={{ from: location }} />;
+  if (!token) return <Navigate to="/login" replace state={{ from: location }} />;
   return children;
 }
 
@@ -66,17 +65,20 @@ function ProtectedUserLayout({ children }) {
 export default function App() {
   const adminToken = localStorage.getItem("hyzen_jwt");
   const userToken = localStorage.getItem("hyzen_user_jwt");
+  const isAdminUser = api.getUserIsAdmin();
+
+  const defaultAuthedRoute = adminToken || isAdminUser ? "/overview" : userToken ? "/user/dashboard" : "/login";
 
   return (
     <Routes>
-      <Route path="/login" element={adminToken ? <Navigate to="/overview" replace /> : <Login />} />
+      <Route path="/login" element={adminToken || userToken ? <Navigate to={defaultAuthedRoute} replace /> : <Login />} />
 
-      <Route path="/user/login" element={userToken ? <Navigate to="/user/dashboard" replace /> : <UserLogin />} />
+      <Route path="/user/login" element={<Navigate to="/login" replace />} />
       <Route path="/user/register" element={<UserRegister />} />
 
       <Route
         path="/"
-        element={<Navigate to="/user/login" replace />}
+        element={<Navigate to={defaultAuthedRoute} replace />}
       />
 
       <Route
@@ -242,7 +244,7 @@ export default function App() {
         }
       />
 
-      <Route path="*" element={<Navigate to={adminToken ? "/overview" : "/user/login"} replace />} />
+      <Route path="*" element={<Navigate to={defaultAuthedRoute} replace />} />
     </Routes>
   );
 }

@@ -131,7 +131,7 @@ export default function Overview() {
       key: "running",
       label: "Running",
       value: counts.running,
-      hint: "Healthy services",
+      hint: "Currently online",
       Icon: Play,
       tone: brand.onlineColor,
     },
@@ -139,7 +139,7 @@ export default function Overview() {
       key: "stopped",
       label: "Stopped",
       value: counts.stopped,
-      hint: "Needs attention",
+      hint: "Currently offline",
       Icon: Square,
       tone: brand.offlineColor,
     },
@@ -147,7 +147,7 @@ export default function Overview() {
       key: "uptime",
       label: "VPS Uptime",
       value: uptime,
-      hint: "Host stability",
+      hint: "Server uptime",
       Icon: Clock3,
       tone: brand.accentColor,
     },
@@ -165,10 +165,10 @@ export default function Overview() {
         }}
       >
         <div className="inline-flex items-center px-3 py-1 rounded-full border mb-2" style={{ borderColor: `${brand.primaryColor}55`, color: brand.primaryColor, fontSize: 11, fontWeight: 700, letterSpacing: 0.8 }}>
-          CONTROL PLANE
+          DASHBOARD
         </div>
         <div className="text-3xl font-black" style={{ color: brand.textPrimary }}>
-          Infrastructure Overview
+          Overview
         </div>
         <div className="text-sm mt-1" style={{ color: brand.textMuted }}>
           {counts.running} running services across {counts.total} deployments.
@@ -309,10 +309,10 @@ export default function Overview() {
             }}
           >
             <div className="text-sm font-semibold" style={{ color: brand.textPrimary }}>
-              Need Help?
+              Help & Docs
             </div>
             <div className="text-sm mt-1" style={{ color: brand.textMuted }}>
-              Quick docs and best practices.
+              Documentation and quick references.
             </div>
             <button
               type="button"

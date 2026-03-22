@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { apiLogin } from "../api.js";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { api, apiLogin } from "../api.js";
 import { brand } from "../config/brand.js";
 
 function accentWithOpacity(hex, alphaHex) {
@@ -9,24 +9,62 @@ function accentWithOpacity(hex, alphaHex) {
 
 export default function Login() {
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
+  const location = useLocation();
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const glowBlue = accentWithOpacity(brand.accentColor, "2b");
   const glowOrange = accentWithOpacity(brand.primaryColor, "30");
+  const fromPath = location.state?.from?.pathname || "";
+
+  function routeAfterUserLogin(token) {
+    const payload = api.decodeJwtPayload(token);
+    if (payload?.is_admin === true) {
+      navigate("/overview", { replace: true });
+      return;
+    }
+
+    if (fromPath.startsWith("/user/")) {
+      navigate(fromPath, { replace: true });
+      return;
+    }
+
+    navigate("/user/dashboard", { replace: true });
+  }
 
   async function onSubmit(e) {
     e.preventDefault();
     setError("");
     setLoading(true);
+
     try {
-      const { token } = await apiLogin({ username, password });
+      localStorage.removeItem("hyzen_jwt");
+      localStorage.removeItem("hyzen_user_jwt");
+
+      try {
+        const userRes = await fetch(`${api.API_BASE_URL}/api/user/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: identifier, password }),
+        });
+
+        if (userRes.ok) {
+          const userData = await userRes.json();
+          localStorage.setItem("hyzen_user_jwt", userData.token);
+          routeAfterUserLogin(userData.token);
+          return;
+        }
+      } catch {
+        // Fall back to admin credentials flow.
+      }
+
+      const { token } = await apiLogin({ username: identifier, password });
       localStorage.setItem("hyzen_jwt", token);
-      navigate("/overview");
+      navigate("/overview", { replace: true });
     } catch (err) {
-      setError(err?.message || "Login failed");
+      setError(err?.message || "Invalid credentials");
     } finally {
       setLoading(false);
     }
@@ -42,9 +80,9 @@ export default function Login() {
       }}
     >
       <div
-        className="w-full max-w-[440px] backdrop-blur-xl rounded-[28px] border transition-all duration-200"
+        className="w-full max-w-[460px] backdrop-blur-xl rounded-[28px] border transition-all duration-200"
         style={{
-          backgroundColor: brand.glassCardBg,
+          backgroundColor: "rgba(7, 14, 24, 0.84)",
           borderColor: brand.border,
           boxShadow: "0 26px 54px rgba(2, 9, 18, 0.56)",
         }}
@@ -52,24 +90,24 @@ export default function Login() {
         <div className="p-8">
           <div className="mb-6">
             <div className="inline-flex items-center px-3 py-1 rounded-full border mb-4" style={{ borderColor: `${brand.primaryColor}55`, color: brand.primaryColor, fontSize: 11, fontWeight: 700, letterSpacing: 0.8 }}>
-              DASHBOARD ACCESS
+              SINGLE SIGN IN
             </div>
             <div className="text-2xl font-extrabold tracking-tight" style={{ color: brand.textPrimary }}>
               {brand.name}
             </div>
             <div className="mt-2 text-sm" style={{ color: brand.textMuted }}>
-              {brand.tagline}
+              One login for everyone. Admins get full controls automatically.
             </div>
           </div>
 
           <form onSubmit={onSubmit} className="space-y-4">
             <div>
               <label className="block mb-2 text-sm font-medium" style={{ color: brand.textMuted }}>
-                Username
+                Email or Admin Username
               </label>
               <input
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 className="w-full rounded-xl outline-none transition-all duration-200"
                 style={{
                   backgroundColor: brand.inputBg,
@@ -77,6 +115,7 @@ export default function Login() {
                   color: brand.textPrimary,
                   padding: "12px 16px",
                 }}
+                placeholder="you@example.com or admin"
               />
             </div>
 
@@ -95,6 +134,7 @@ export default function Login() {
                   color: brand.textPrimary,
                   padding: "12px 16px",
                 }}
+                placeholder="••••••••"
               />
             </div>
 
@@ -127,7 +167,10 @@ export default function Login() {
           </form>
 
           <div className="mt-5 text-xs" style={{ color: brand.textMuted }}>
-            Tip: update admin credentials in <span style={{ color: brand.textPrimary }}>Settings</span>.
+            New here?{" "}
+            <Link to="/user/register" style={{ color: brand.textPrimary }}>
+              Create an account
+            </Link>
           </div>
         </div>
       </div>

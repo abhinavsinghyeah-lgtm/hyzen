@@ -54,7 +54,7 @@ export default function UserDashboard() {
     <div className="space-y-6">
       <div>
         <div className="text-2xl font-bold" style={{ color: brand.textPrimary }}>
-          Hello, {me?.profile?.name || "User"} 👋
+          Welcome, {me?.profile?.name || "User"}
         </div>
         <div className="text-sm mt-1" style={{ color: brand.textMuted }}>
           {me ? `${me.containersUsed} of ${me.containersAllowed} servers used` : ""}
@@ -79,7 +79,7 @@ export default function UserDashboard() {
         <div className="rounded-2xl border p-5" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="text-sm font-semibold" style={{ color: brand.textPrimary }}>Your Plan</div>
+              <div className="text-sm font-semibold" style={{ color: brand.textPrimary }}>Plan</div>
               <div className="text-sm mt-1" style={{ color: brand.textMuted }}>
                 Expires in {days} day{days === 1 ? "" : "s"}
               </div>
@@ -103,7 +103,7 @@ export default function UserDashboard() {
         </div>
 
         <div className="rounded-2xl border p-5" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
-          <div className="text-sm font-semibold" style={{ color: brand.textPrimary }}>Quick Actions</div>
+          <div className="text-sm font-semibold" style={{ color: brand.textPrimary }}>Actions</div>
           <div className="mt-4 flex flex-col sm:flex-row gap-3">
             <button
               type="button"
@@ -139,7 +139,7 @@ export default function UserDashboard() {
               }}
               onClick={() => navigate("/user/billing")}
             >
-              Upgrade Plan
+              Billing
             </button>
           </div>
         </div>

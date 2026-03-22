@@ -42,7 +42,7 @@ export default function UserRegister() {
       }
 
       await res.json();
-      navigate("/user/login");
+      navigate("/login");
     } catch (err) {
       setError(err?.message || "Registration failed");
     } finally {
@@ -177,7 +177,7 @@ export default function UserRegister() {
 
           <div className="mt-5 text-xs" style={{ color: brand.textMuted }}>
             Already have an account?{" "}
-            <Link to="/user/login" style={{ color: brand.textPrimary }}>
+            <Link to="/login" style={{ color: brand.textPrimary }}>
               Login
             </Link>
           </div>

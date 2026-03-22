@@ -98,12 +98,14 @@ export async function apiLogin({ username, password }) {
 
 export function adminLogout() {
   localStorage.removeItem("hyzen_jwt");
+  localStorage.removeItem("hyzen_user_jwt");
   window.location.href = "/login";
 }
 
 export function userLogout() {
   localStorage.removeItem("hyzen_user_jwt");
-  window.location.href = "/user/login";
+  localStorage.removeItem("hyzen_jwt");
+  window.location.href = "/login";
 }
 
 export const api = {
