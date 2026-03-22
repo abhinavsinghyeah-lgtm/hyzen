@@ -1,8 +1,10 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { Menu, X } from "lucide-react";
 import Sidebar from "./components/Sidebar.jsx";
 import UserSidebar from "./components/UserSidebar.jsx";
 import { api } from "./api.js";
+import { brand } from "./config/brand.js";
 
 import Login from "./pages/Login.jsx";
 import Overview from "./pages/Overview.jsx";
@@ -42,25 +44,118 @@ function RequireUserAuth({ children }) {
   return children;
 }
 
-function ProtectedAdminLayout({ children }) {
+function MobileTopbar({ onOpen, title }) {
   return (
-    <div className="min-h-screen flex">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto p-6 transition-all duration-200 hyzen-fade-in">
-        {children}
+    <div
+      className="lg:hidden sticky top-0 z-20 border-b px-3 py-3 flex items-center gap-3"
+      style={{
+        backgroundColor: "rgba(6, 15, 27, 0.94)",
+        backdropFilter: "blur(8px)",
+        borderColor: brand.border,
+      }}
+    >
+      <button
+        type="button"
+        onClick={onOpen}
+        className="inline-flex items-center justify-center"
+        style={{
+          width: 34,
+          height: 34,
+          border: `1px solid ${brand.border}`,
+          color: brand.textPrimary,
+          backgroundColor: "transparent",
+        }}
+        aria-label="Open menu"
+      >
+        <Menu size={18} />
+      </button>
+      <div className="min-w-0">
+        <div className="text-sm font-semibold truncate" style={{ color: brand.textPrimary }}>
+          {brand.name}
+        </div>
+        <div className="text-xs" style={{ color: brand.textMuted }}>
+          {title}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResponsiveLayout({ children, role = "admin" }) {
+  const location = useLocation();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isCompact, setIsCompact] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth < 1024 : false
+  );
+
+  useEffect(() => {
+    const onResize = () => setIsCompact(window.innerWidth < 1024);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location.pathname]);
+
+  const title = role === "user" ? "User Dashboard" : "Admin Dashboard";
+
+  return (
+    <div className="min-h-screen flex" style={{ backgroundColor: brand.darkBg }}>
+      {isCompact ? (
+        <>
+          <div
+            className={`fixed inset-0 z-30 transition-opacity duration-200 ${sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
+            style={{ backgroundColor: "rgba(0, 0, 0, 0.45)" }}
+            onClick={() => setSidebarOpen(false)}
+          />
+
+          <div
+            className={`fixed inset-y-0 left-0 z-40 h-screen transition-transform duration-200 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
+          >
+            <div className="h-full relative">
+              {role === "user" ? <UserSidebar /> : <Sidebar />}
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(false)}
+                className="absolute top-3 right-3 inline-flex items-center justify-center"
+                style={{
+                  width: 30,
+                  height: 30,
+                  border: `1px solid ${brand.border}`,
+                  color: brand.textPrimary,
+                  backgroundColor: "rgba(8, 15, 26, 0.95)",
+                }}
+                aria-label="Close menu"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          </div>
+        </>
+      ) : role === "user" ? (
+        <UserSidebar />
+      ) : (
+        <Sidebar />
+      )}
+
+      <main className="flex-1 min-w-0 overflow-y-auto hyzen-fade-in">
+        {isCompact ? <MobileTopbar onOpen={() => setSidebarOpen(true)} title={title} /> : null}
+        <div className="p-3 sm:p-4 md:p-5 lg:p-6">{children}</div>
       </main>
     </div>
   );
 }
 
+function ProtectedAdminLayout({ children }) {
+  return (
+    <ResponsiveLayout role="admin">{children}</ResponsiveLayout>
+  );
+}
+
 function ProtectedUserLayout({ children }) {
   return (
-    <div className="min-h-screen flex">
-      <UserSidebar />
-      <main className="flex-1 overflow-y-auto p-6 transition-all duration-200 hyzen-fade-in">
-        {children}
-      </main>
-    </div>
+    <ResponsiveLayout role="user">{children}</ResponsiveLayout>
   );
 }
 

@@ -74,7 +74,7 @@ export default function UserSidebar() {
       style={{ width: 212 }}
     >
       <div
-        className="relative h-full flex flex-col px-3 py-6 hyzen-sidebar-shell"
+        className="relative h-full flex flex-col px-3 py-6 hyzen-sidebar-shell overflow-y-auto"
         style={{ backgroundImage: brand.sidebarBg, borderColor: brand.border }}
       >
         {/* Logo */}
