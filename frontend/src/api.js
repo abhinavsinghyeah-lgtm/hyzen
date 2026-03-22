@@ -1,6 +1,18 @@
 function resolveApiBaseUrl() {
   const raw = String(import.meta.env.VITE_API_BASE_URL || "").trim();
-  if (raw) return raw.replace(/\/$/, "");
+  if (raw) {
+    if (typeof window !== "undefined" && window.location.protocol === "https:" && raw.startsWith("http://")) {
+      try {
+        const rawUrl = new URL(raw);
+        if (rawUrl.hostname === window.location.hostname || rawUrl.hostname === "160.187.211.242") {
+          return window.location.origin.replace(/\/$/, "");
+        }
+      } catch {
+        return window.location.origin.replace(/\/$/, "");
+      }
+    }
+    return raw.replace(/\/$/, "");
+  }
 
   if (typeof window !== "undefined") {
     const u = new URL(window.location.origin);
