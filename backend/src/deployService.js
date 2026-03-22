@@ -336,9 +336,9 @@ function runShellCommand(command, { cwd, env, log }) {
 }
 
 function buildServiceUrl(hostPort, publicBaseUrl) {
-  const base = String(publicBaseUrl || "").trim();
-  if (!base) return `http://localhost:${hostPort}`;
-  return `${base.replace(/\/+$/, "")}:${hostPort}`;
+  // Always store an internal target URL for reverse proxying.
+  // Public URLs are exposed by API routes/subdomain mapping, not by this value.
+  return `http://127.0.0.1:${hostPort}`;
 }
 
 // ─── Process helpers ──────────────────────────────────────────────────────────

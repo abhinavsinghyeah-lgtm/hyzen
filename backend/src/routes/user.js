@@ -336,6 +336,7 @@ router.post("/deploy", requireUser, async (req, res) => {
          VALUES ($1, $2, $3, $4) ON CONFLICT (subdomain) DO NOTHING`,
         [freeSlug, config.baseDomain, containerId, userId]
       );
+      try { res.write(`Assigned subdomain: https://${freeSlug}.${config.baseDomain}\n`); } catch {}
     } catch { /* non-fatal */ }
 
     res.end();
