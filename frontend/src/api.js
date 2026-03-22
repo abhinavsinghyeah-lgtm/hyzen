@@ -1,4 +1,17 @@
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
+function resolveApiBaseUrl() {
+  const raw = String(import.meta.env.VITE_API_BASE_URL || "").trim();
+  if (raw) return raw.replace(/\/$/, "");
+
+  if (typeof window !== "undefined") {
+    const u = new URL(window.location.origin);
+    if (u.port === "3001") u.port = "4000";
+    return u.origin;
+  }
+
+  return "http://localhost:4000";
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 function decodeJwtPayload(token) {
   try {
