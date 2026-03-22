@@ -207,7 +207,11 @@ app.use(async (req, res, next) => {
       port: targetPort,
       method: req.method,
       path: req.url,
-      headers: { ...req.headers, host: target.host },
+      headers: {
+        ...req.headers,
+        "x-forwarded-host": req.headers.host || "",
+        "x-forwarded-proto": req.protocol,
+      },
     }, (proxyRes) => {
       res.status(proxyRes.statusCode || 502);
       for (const [k, v] of Object.entries(proxyRes.headers || {})) {
@@ -290,7 +294,8 @@ app.use("/service/:scope/:id", async (req, res) => {
         path: req.url,
         headers: {
           ...req.headers,
-          host: target.host,
+          "x-forwarded-host": req.headers.host || "",
+          "x-forwarded-proto": req.protocol,
         },
       },
       (proxyRes) => {

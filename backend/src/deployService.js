@@ -547,9 +547,8 @@ async function deployProcess({
     );
   }
 
-  log(`\nApp started (PID ${child.pid}). URL: ${url}\n`);
-  log(`Service URL: ${url}\n`);
-  log(`${url}\n`);
+  log(`\nApp started (PID ${child.pid}).\n`);
+  log(`Internal service target: ${url}\n`);
   log("Deployment complete.\n");
 
   return {

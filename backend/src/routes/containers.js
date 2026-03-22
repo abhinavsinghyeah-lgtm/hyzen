@@ -4,6 +4,7 @@ const router = express.Router();
 const { getPool } = require("../db");
 const { invalidate } = require("../containersCache");
 const { killProcess, isPidRunning, rerunProcess, deployProcess, envInputToPairs } = require("../deployService");
+const config = require("../config");
 
 function getPublicBaseUrl(req) {
   const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "http")
@@ -23,15 +24,22 @@ function getAccessUrl(req, id) {
   return `${base}/service/admin/${id}`;
 }
 
+function buildSubdomainUrl(subdomain, baseDomain) {
+  if (!subdomain) return null;
+  return `https://${subdomain}.${baseDomain || config.baseDomain}`;
+}
+
 // ── GET / — list all deployments ─────────────────────────────────────────────
 router.get("/", async (req, res) => {
   try {
     const pool = getPool();
     const { rows } = await pool.query(
-            `SELECT id, repo_url, branch, container_name, status, url, pid,
-              work_dir, log_file, start_cmd, build_cmd, env_vars, suspended, suspended_reason, created_at
-       FROM hyzen_deployments
-       ORDER BY id DESC`
+            `SELECT d.id, d.repo_url, d.branch, d.container_name, d.status, d.url, d.pid,
+              d.work_dir, d.log_file, d.start_cmd, d.build_cmd, d.env_vars, d.suspended, d.suspended_reason, d.created_at,
+              s.subdomain, s.base_domain
+       FROM hyzen_deployments d
+       LEFT JOIN hyzen_subdomains s ON s.admin_deployment_id = d.id
+       ORDER BY d.id DESC`
     );
 
     const result = rows.map((row) => {
@@ -40,7 +48,7 @@ router.get("/", async (req, res) => {
         id: String(row.id),
         name: row.container_name || "",
         status: alive ? "running" : "stopped",
-        url: getAccessUrl(req, row.id),
+        url: buildSubdomainUrl(row.subdomain, row.base_domain) || getAccessUrl(req, row.id),
         pid: row.pid || null,
         workDir: row.work_dir || null,
         logFile: row.log_file || null,
@@ -65,7 +73,10 @@ router.get("/:id", async (req, res) => {
   try {
     const pool = getPool();
     const { rows } = await pool.query(
-      `SELECT * FROM hyzen_deployments WHERE id = $1`,
+      `SELECT d.*, s.subdomain, s.base_domain
+       FROM hyzen_deployments d
+       LEFT JOIN hyzen_subdomains s ON s.admin_deployment_id = d.id
+       WHERE d.id = $1`,
       [req.params.id]
     );
     const row = rows[0];
@@ -81,7 +92,7 @@ router.get("/:id", async (req, res) => {
         startCmd: row.start_cmd || "",
         envVars: row.env_vars || [],
         status: row.pid && isPidRunning(row.pid) ? "running" : "stopped",
-        url: getAccessUrl(req, row.id),
+        url: buildSubdomainUrl(row.subdomain, row.base_domain) || getAccessUrl(req, row.id),
         suspended: Boolean(row.suspended),
         suspendedReason: row.suspended_reason || null,
       },

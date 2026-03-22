@@ -32,6 +32,11 @@ function getAccessUrl(req, id) {
   return `${base}/service/user/${id}`;
 }
 
+function buildSubdomainUrl(subdomain, baseDomain) {
+  if (!subdomain) return null;
+  return `https://${subdomain}.${baseDomain || config.baseDomain}`;
+}
+
 function sanitizeConfigInput(body = {}) {
   const next = {};
   if (typeof body.containerName === "string") next.containerName = body.containerName.trim();
@@ -166,9 +171,11 @@ router.get("/containers", requireAdmin, async (req, res) => {
   try {
     const pool = getPool();
     const { rows } = await pool.query(
-      `SELECT c.*, u.email AS user_email, u.name AS user_name, u.is_suspended AS user_suspended
+      `SELECT c.*, u.email AS user_email, u.name AS user_name, u.is_suspended AS user_suspended,
+              hs.subdomain, hs.base_domain
        FROM user_containers c
        JOIN users u ON u.id = c.user_id
+       LEFT JOIN hyzen_subdomains hs ON hs.user_container_id = c.id
        ORDER BY c.created_at DESC`
     );
 
@@ -184,7 +191,7 @@ router.get("/containers", requireAdmin, async (req, res) => {
         buildCmd: r.build_cmd || "",
         startCmd: r.start_cmd || "",
         status: r.pid && isPidRunning(r.pid) ? "running" : (r.status || "stopped"),
-        url: getAccessUrl(req, r.id),
+        url: buildSubdomainUrl(r.subdomain, r.base_domain) || getAccessUrl(req, r.id),
         suspended: Boolean(r.suspended) || Boolean(r.user_suspended),
         suspendedReason: r.suspended_reason || null,
         createdAt: r.created_at,
@@ -199,9 +206,11 @@ router.get("/containers/:id", requireAdmin, async (req, res) => {
   try {
     const pool = getPool();
     const { rows } = await pool.query(
-      `SELECT c.*, u.email AS user_email, u.name AS user_name, u.is_suspended AS user_suspended, u.suspended_reason AS user_suspended_reason
+      `SELECT c.*, u.email AS user_email, u.name AS user_name, u.is_suspended AS user_suspended, u.suspended_reason AS user_suspended_reason,
+              hs.subdomain, hs.base_domain
        FROM user_containers c
        JOIN users u ON u.id = c.user_id
+       LEFT JOIN hyzen_subdomains hs ON hs.user_container_id = c.id
        WHERE c.id = $1`,
       [req.params.id]
     );
@@ -224,7 +233,7 @@ router.get("/containers/:id", requireAdmin, async (req, res) => {
         workDir: row.work_dir || "",
         logFile: row.log_file || "",
         status: row.pid && isPidRunning(row.pid) ? "running" : (row.status || "stopped"),
-        url: getAccessUrl(req, row.id),
+        url: buildSubdomainUrl(row.subdomain, row.base_domain) || getAccessUrl(req, row.id),
         suspended: Boolean(row.suspended) || Boolean(row.user_suspended),
         suspendedReason: row.suspended_reason || row.user_suspended_reason || null,
       },
