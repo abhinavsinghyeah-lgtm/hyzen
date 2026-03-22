@@ -51,7 +51,7 @@ function ProgressBar({ label, valueText, percent }) {
         </div>
       </div>
 
-      <div className="h-[8px] rounded-full overflow-hidden" style={{ backgroundColor: "#e5edf7" }}>
+      <div className="h-[8px] rounded-full overflow-hidden" style={{ backgroundColor: "rgba(26,42,61,0.7)" }}>
         <div
           className="h-full transition-all duration-200"
           style={{
@@ -121,7 +121,7 @@ export default function Overview() {
   const cards = [
     {
       key: "total",
-      label: "Total Containers",
+      label: "Total Servers",
       value: counts.total,
       hint: "All deployments",
       Icon: Box,

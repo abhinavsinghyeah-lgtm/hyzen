@@ -4,7 +4,7 @@ const crypto = require("crypto");
 const Razorpay = require("razorpay");
 const fs = require("fs");
 
-const { requireUser } = require("../middleware/auth");
+const { requireUser, requireAdmin } = require("../middleware/auth");
 const config = require("../config");
 const { getPool } = require("../db");
 const { deployProcess, rerunProcess, killProcess, isPidRunning, envInputToPairs } = require("../deployService");
@@ -129,7 +129,7 @@ router.post("/login", async (req, res) => {
     if (!ok) return res.status(401).json({ message: "Invalid credentials" });
     const jwt = require("jsonwebtoken");
     const token = jwt.sign(
-      { sub: user.id, role: "user", email: user.email },
+      { sub: user.id, role: "user", email: user.email, is_admin: Boolean(user.is_admin) },
       config.jwtSecret,
       { expiresIn: config.jwtExpiry }
     );
@@ -145,7 +145,7 @@ router.get("/me", requireUser, async (req, res) => {
     const pool = getPool();
     const userId = req.user.sub;
     const u = await pool.query(
-      `SELECT id, email, name, plan, plan_expires_at, is_suspended, suspended_reason FROM users WHERE id = $1;`,
+      `SELECT id, email, name, plan, plan_expires_at, is_suspended, suspended_reason, is_admin FROM users WHERE id = $1;`,
       [userId]
     );
     const user = u.rows[0];
@@ -163,6 +163,7 @@ router.get("/me", requireUser, async (req, res) => {
         suspensionReason: user.suspended_reason || null,
       },
       plan: { ...planMeta, key: plan, daysRemaining: days },
+      is_admin: Boolean(user.is_admin),
       containersUsed,
       containersAllowed: planMeta.containers,
     });
@@ -862,6 +863,29 @@ router.put("/settings", requireUser, async (req, res) => {
     return res.json({ ok: true });
   } catch {
     return res.status(500).json({ message: "Failed to update settings" });
+  }
+});
+
+// ── Admin grants ──────────────────────────────────────────────────────────────
+
+// Grant or revoke admin status for a user (requires existing admin).
+router.post("/admin-grant", requireAdmin, async (req, res) => {
+  try {
+    const { email, grant } = req.body || {};
+    if (!email) return res.status(400).json({ message: "Email required" });
+
+    const pool = getPool();
+    const u = await pool.query(`SELECT id FROM users WHERE email = $1;`, [email]);
+    if (!u.rows.length) return res.status(404).json({ message: "User not found" });
+
+    await pool.query(
+      `UPDATE users SET is_admin = $1 WHERE email = $2;`,
+      [grant !== false, email]
+    );
+
+    return res.json({ ok: true, is_admin: grant !== false });
+  } catch {
+    return res.status(500).json({ message: "Failed to update admin status" });
   }
 });
 

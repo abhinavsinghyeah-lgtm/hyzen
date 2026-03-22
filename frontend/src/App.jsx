@@ -2,6 +2,7 @@ import React from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import Sidebar from "./components/Sidebar.jsx";
 import UserSidebar from "./components/UserSidebar.jsx";
+import { api } from "./api.js";
 
 import Login from "./pages/Login.jsx";
 import Overview from "./pages/Overview.jsx";
@@ -25,10 +26,12 @@ import UserSettings from "./pages/User/Settings.jsx";
 import UserContainerControl from "./pages/User/ContainerControl.jsx";
 
 function RequireAdminAuth({ children }) {
-  const token = localStorage.getItem("hyzen_jwt");
+  const adminToken = localStorage.getItem("hyzen_jwt");
   const location = useLocation();
-  if (!token) return <Navigate to="/login" replace state={{ from: location }} />;
-  return children;
+  if (adminToken) return children;
+  // Also allow users with is_admin=true.
+  if (api.getUserIsAdmin()) return children;
+  return <Navigate to="/login" replace state={{ from: location }} />;
 }
 
 function RequireUserAuth({ children }) {

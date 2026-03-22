@@ -25,7 +25,9 @@ function requireAdmin(req, res, next) {
   try {
     const decoded = verifyToken(req);
     if (!decoded) return res.status(401).json({ message: "Missing token" });
-    if (decoded.role !== "admin") return res.status(403).json({ message: "Forbidden" });
+    const isOldAdmin = decoded.role === "admin";
+    const isUserAdmin = decoded.role === "user" && decoded.is_admin === true;
+    if (!isOldAdmin && !isUserAdmin) return res.status(403).json({ message: "Forbidden" });
     req.user = decoded;
     return next();
   } catch {

@@ -1,7 +1,31 @@
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL
 
+function decodeJwtPayload(token) {
+  try {
+    const base64Url = String(token || "").split(".")[1];
+    if (!base64Url) return null;
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    return JSON.parse(decodeURIComponent(atob(base64).split("").map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)).join("")));
+  } catch {
+    return null;
+  }
+}
+
+function getUserIsAdmin() {
+  const token = localStorage.getItem("hyzen_user_jwt");
+  if (!token) return false;
+  const payload = decodeJwtPayload(token);
+  return payload?.is_admin === true;
+}
+
 function getAdminToken() {
-  return localStorage.getItem("hyzen_jwt");
+  // Old-style dedicated admin JWT takes priority.
+  const adminToken = localStorage.getItem("hyzen_jwt");
+  if (adminToken) return adminToken;
+  // If logged in as a regular user who has admin rights, use the user JWT.
+  const userToken = localStorage.getItem("hyzen_user_jwt");
+  if (userToken && getUserIsAdmin()) return userToken;
+  return null;
 }
 
 function getUserToken() {
@@ -75,6 +99,8 @@ export const api = {
   request,
   getAdminToken,
   getUserToken,
+  getUserIsAdmin,
+  decodeJwtPayload,
 };
 
 export async function apiStream(path, options = {}) {

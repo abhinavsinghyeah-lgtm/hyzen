@@ -114,10 +114,10 @@ export default function Containers() {
           SERVICE MATRIX
         </div>
         <div className="text-2xl font-bold" style={{ color: brand.textPrimary }}>
-          Containers
+          Servers
         </div>
         <div className="text-sm mt-1" style={{ color: brand.textMuted }}>
-          Manage your Docker containers.
+          Manage your deployed servers.
         </div>
       </div>
 
@@ -139,7 +139,7 @@ export default function Containers() {
         >
           <Box size={22} style={{ color: brand.primaryColor }} />
           <div className="text-sm font-semibold" style={{ color: brand.textPrimary }}>
-            No containers running
+            No servers running
           </div>
           <div className="text-sm" style={{ color: brand.textMuted, maxWidth: 360 }}>
             Deploy your first project to get started.

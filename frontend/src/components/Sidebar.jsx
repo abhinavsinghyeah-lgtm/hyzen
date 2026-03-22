@@ -17,7 +17,7 @@ import { adminLogout } from "../api.js";
 
 const navItems = [
   { label: "Overview", to: "/overview", Icon: LayoutDashboard },
-  { label: "Containers", to: "/containers", Icon: Box },
+  { label: "Servers", to: "/containers", Icon: Box },
   { label: "Deploy", to: "/deploy", Icon: Rocket },
   { label: "Logs", to: "/logs", Icon: ScrollText },
   { label: "Settings", to: "/settings", Icon: Settings },

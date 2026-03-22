@@ -57,7 +57,7 @@ export default function UserDashboard() {
           Hello, {me?.profile?.name || "User"} 👋
         </div>
         <div className="text-sm mt-1" style={{ color: brand.textMuted }}>
-          {me ? `${me.containersUsed} of ${me.containersAllowed} containers used` : ""}
+          {me ? `${me.containersUsed} of ${me.containersAllowed} servers used` : ""}
         </div>
       </div>
 
@@ -97,7 +97,7 @@ export default function UserDashboard() {
           </div>
           <div className="mt-4">
             <div className="text-sm" style={{ color: brand.textMuted }}>
-              Containers: {me?.containersUsed} / {me?.containersAllowed}
+              Servers: {me?.containersUsed} / {me?.containersAllowed}
             </div>
           </div>
         </div>
@@ -127,7 +127,7 @@ export default function UserDashboard() {
               }}
               onClick={() => navigate("/user/containers")}
             >
-              View Containers
+              View Servers
             </button>
             <button
               type="button"
