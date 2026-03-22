@@ -116,6 +116,34 @@ export const api = {
   getUserToken,
   getUserIsAdmin,
   decodeJwtPayload,
+
+  // ── Subdomains (admin) ─────────────────────────────────────────────────────
+  async adminGetSubdomains() {
+    return getJson("/api/subdomains");
+  },
+  async adminCreateSubdomain(subdomain) {
+    const res = await request("/api/subdomains", {
+      method: "POST",
+      body: JSON.stringify({ subdomain }),
+    });
+    return res.json();
+  },
+  async adminUpdateSubdomain(id, data) {
+    const res = await request(`/api/subdomains/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+    return res.json();
+  },
+  async adminDeleteSubdomain(id) {
+    const res = await request(`/api/subdomains/${id}`, { method: "DELETE" });
+    return res.json();
+  },
+
+  // ── Subdomains (user) ──────────────────────────────────────────────────────
+  async userGetSubdomains() {
+    return getJson("/api/user/subdomains", { token: getUserToken() });
+  },
 };
 
 export async function apiStream(path, options = {}) {

@@ -7,11 +7,13 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 
 const { initDb, getPool } = require("./db");
+const config = require("./config");
 const authRoutes = require("./routes/auth");
 const containersRoutes = require("./routes/containers");
 const deployRoutes = require("./routes/deploy");
 const userRoutes = require("./routes/user");
 const adminRoutes = require("./routes/admin");
+const subdomainRoutes = require("./routes/subdomains");
 
 const { requireAdmin } = require("./middleware/auth");
 
@@ -125,6 +127,101 @@ function suspendedHtml(message) {
 </body>
 </html>`;
 }
+
+// ── Subdomain proxy middleware ─────────────────────────────────────────────────
+// Routes *.hyzen.pro (wildcard) to the assigned container, hiding the VPS IP.
+app.use(async (req, res, next) => {
+  try {
+    const host = String(req.headers.host || "").split(":")[0].toLowerCase();
+    const baseDomain = config.baseDomain;
+    const dashDomain = config.dashDomain;
+
+    // Only intercept wildcard subdomains, skip the dashboard domain itself
+    if (host === dashDomain || !host.endsWith(`.${baseDomain}`)) {
+      return next();
+    }
+
+    const subdomain = host.slice(0, -(baseDomain.length + 1));
+    if (!subdomain || subdomain.includes(".")) return next();
+
+    const pool = getPool();
+    const { rows } = await pool.query(
+      `SELECT user_container_id, admin_deployment_id FROM hyzen_subdomains
+       WHERE subdomain = $1 AND is_active = true`,
+      [subdomain]
+    );
+
+    if (!rows.length) {
+      return res.status(404).setHeader("Content-Type", "text/plain").send("Subdomain not found");
+    }
+
+    const entry = rows[0];
+    let targetUrl = null;
+    let isSuspended = false;
+    let suspendedReason = "";
+
+    if (entry.user_container_id) {
+      const r = await pool.query(
+        `SELECT c.url, c.suspended, c.suspended_reason,
+                u.is_suspended, u.suspended_reason AS user_suspended_reason
+         FROM user_containers c
+         JOIN users u ON u.id = c.user_id
+         WHERE c.id = $1`,
+        [entry.user_container_id]
+      );
+      const cnt = r.rows[0];
+      if (!cnt) return res.status(404).send("Container not found");
+      if (cnt.suspended || cnt.is_suspended) {
+        isSuspended = true;
+        suspendedReason = cnt.suspended_reason || cnt.user_suspended_reason || "Service suspended";
+      }
+      targetUrl = cnt.url;
+    } else if (entry.admin_deployment_id) {
+      const r = await pool.query(
+        `SELECT url, suspended, suspended_reason FROM hyzen_deployments WHERE id = $1`,
+        [entry.admin_deployment_id]
+      );
+      const dep = r.rows[0];
+      if (!dep) return res.status(404).send("Deployment not found");
+      if (dep.suspended) { isSuspended = true; suspendedReason = dep.suspended_reason || "Service suspended"; }
+      targetUrl = dep.url;
+    }
+
+    if (isSuspended) {
+      res.status(403).setHeader("Content-Type", "text/html; charset=utf-8");
+      return res.end(suspendedHtml(suspendedReason));
+    }
+
+    if (!targetUrl) return res.status(503).send("Service not available");
+
+    let target;
+    try { target = new URL(targetUrl); } catch { return res.status(503).send("Invalid service target"); }
+
+    const isHttps = target.protocol === "https:";
+    const client = isHttps ? https : http;
+    const targetPort = Number(target.port || (isHttps ? 443 : 80));
+
+    const proxyReq = client.request({
+      protocol: target.protocol,
+      hostname: target.hostname,
+      port: targetPort,
+      method: req.method,
+      path: req.url,
+      headers: { ...req.headers, host: target.host },
+    }, (proxyRes) => {
+      res.status(proxyRes.statusCode || 502);
+      for (const [k, v] of Object.entries(proxyRes.headers || {})) {
+        if (v != null) res.setHeader(k, v);
+      }
+      proxyRes.pipe(res);
+    });
+
+    proxyReq.on("error", () => { if (!res.headersSent) res.status(502); res.end("Service is unavailable"); });
+    req.pipe(proxyReq);
+  } catch {
+    return next();
+  }
+});
 
 app.use("/service/:scope/:id", async (req, res) => {
   try {
@@ -289,6 +386,7 @@ app.get("/api/vps/stats", requireAdmin, async (req, res) => {
 
 app.use("/api/user", userRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/subdomains", subdomainRoutes);
 
 const PORT = Number(process.env.PORT || 4000);
 

@@ -14,6 +14,7 @@ import Users from "./pages/Users.jsx";
 import ContainerControl from "./pages/ContainerControl.jsx";
 import AdminUserContainers from "./pages/AdminUserContainers.jsx";
 import AdminUserContainerControl from "./pages/AdminUserContainerControl.jsx";
+import AdminSubdomains from "./pages/Subdomains.jsx";
 
 import UserRegister from "./pages/User/Register.jsx";
 import UserDashboard from "./pages/User/Dashboard.jsx";
@@ -23,6 +24,7 @@ import UserLogs from "./pages/User/Logs.jsx";
 import UserBilling from "./pages/User/Billing.jsx";
 import UserSettings from "./pages/User/Settings.jsx";
 import UserContainerControl from "./pages/User/ContainerControl.jsx";
+import UserSubdomains from "./pages/User/Subdomains.jsx";
 
 function RequireAdminAuth({ children }) {
   const adminToken = localStorage.getItem("hyzen_jwt");
@@ -172,6 +174,16 @@ export default function App() {
           </RequireAdminAuth>
         }
       />
+      <Route
+        path="/subdomains"
+        element={
+          <RequireAdminAuth>
+            <ProtectedAdminLayout>
+              <AdminSubdomains />
+            </ProtectedAdminLayout>
+          </RequireAdminAuth>
+        }
+      />
 
       <Route
         path="/user/dashboard"
@@ -239,6 +251,16 @@ export default function App() {
           <RequireUserAuth>
             <ProtectedUserLayout>
               <UserSettings />
+            </ProtectedUserLayout>
+          </RequireUserAuth>
+        }
+      />
+      <Route
+        path="/user/subdomains"
+        element={
+          <RequireUserAuth>
+            <ProtectedUserLayout>
+              <UserSubdomains />
             </ProtectedUserLayout>
           </RequireUserAuth>
         }

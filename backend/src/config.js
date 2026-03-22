@@ -1,4 +1,6 @@
 module.exports = {
+  baseDomain: process.env.BASE_DOMAIN || "hyzen.pro",
+  dashDomain: process.env.DASH_DOMAIN || "dash.hyzen.pro",
   razorpay: {
     keyId: process.env.RAZORPAY_KEY_ID,
     keySecret: process.env.RAZORPAY_KEY_SECRET,

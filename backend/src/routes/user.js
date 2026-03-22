@@ -12,6 +12,35 @@ const { invalidate } = require("../containersCache");
 
 const router = express.Router();
 
+// ── Subdomain helpers ─────────────────────────────────────────────────────────
+
+function generateSlug(name) {
+  return String(name)
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 55) || "server";
+}
+
+async function findFreeSubdomain(pool, slug) {
+  let candidate = slug;
+  for (let i = 2; i <= 100; i++) {
+    const { rows } = await pool.query(
+      `SELECT id FROM hyzen_subdomains WHERE subdomain = $1`,
+      [candidate]
+    );
+    if (!rows.length) return candidate;
+    candidate = `${slug}-${i}`;
+  }
+  return `${slug}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
+function buildSubdomainUrl(subdomain, baseDomain) {
+  if (!subdomain) return null;
+  return `https://${subdomain}.${baseDomain || config.baseDomain}`;
+}
+
 function getPublicBaseUrl(req) {
   const proto = String(req.headers["x-forwarded-proto"] || req.protocol || "http")
     .split(",")[0]
@@ -182,11 +211,14 @@ router.get("/containers", requireUser, async (req, res) => {
     const access = await getUserAccessState(pool, userId);
 
     const { rows } = await pool.query(
-      `SELECT id, name, url, status, pid, work_dir, log_file, start_cmd, build_cmd,
-              repo_url, branch, env_vars, suspended, suspended_reason, created_at
-       FROM user_containers
-       WHERE user_id = $1
-       ORDER BY created_at DESC;`,
+      `SELECT uc.id, uc.name, uc.url, uc.status, uc.pid, uc.work_dir, uc.log_file,
+              uc.start_cmd, uc.build_cmd, uc.repo_url, uc.branch, uc.env_vars,
+              uc.suspended, uc.suspended_reason, uc.created_at,
+              hs.subdomain, hs.base_domain
+       FROM user_containers uc
+       LEFT JOIN hyzen_subdomains hs ON hs.user_container_id = uc.id
+       WHERE uc.user_id = $1
+       ORDER BY uc.created_at DESC;`,
       [userId]
     );
 
@@ -196,7 +228,8 @@ router.get("/containers", requireUser, async (req, res) => {
       repoUrl: r.repo_url || null,
       branch: r.branch || null,
       status: r.pid && isPidRunning(r.pid) ? "running" : "stopped",
-      url: getAccessUrl(req, r.id),
+      url: buildSubdomainUrl(r.subdomain, r.base_domain) || getAccessUrl(req, r.id),
+      subdomain: r.subdomain || null,
       buildCmd: r.build_cmd || "",
       startCmd: r.start_cmd || "",
       suspended: Boolean(r.suspended) || access.isSuspended,
@@ -271,10 +304,11 @@ router.post("/deploy", requireUser, async (req, res) => {
       onLog: (s) => { try { res.write(s); } catch {} },
     });
 
-    await pool.query(
+    const inserted = await pool.query(
       `INSERT INTO user_containers
          (user_id, container_id, name, url, status, pid, work_dir, log_file, start_cmd, build_cmd, repo_url, branch, env_vars, suspended)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, FALSE);`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, FALSE)
+       RETURNING id;`,
       [
         userId,
         result.safeName,
@@ -292,6 +326,18 @@ router.post("/deploy", requireUser, async (req, res) => {
       ]
     );
 
+    // Auto-assign a subdomain based on container name
+    try {
+      const containerId = inserted.rows[0].id;
+      const slug = generateSlug(result.safeName);
+      const freeSlug = await findFreeSubdomain(pool, slug);
+      await pool.query(
+        `INSERT INTO hyzen_subdomains (subdomain, base_domain, user_container_id, user_id)
+         VALUES ($1, $2, $3, $4) ON CONFLICT (subdomain) DO NOTHING`,
+        [freeSlug, config.baseDomain, containerId, userId]
+      );
+    } catch { /* non-fatal */ }
+
     res.end();
   } catch (err) {
     try { res.write(`\nDeployment failed: ${err?.message || String(err)}\n`); } catch {}
@@ -306,7 +352,10 @@ router.get("/containers/:id", requireUser, async (req, res) => {
     const access = await getUserAccessState(pool, userId);
 
     const { rows } = await pool.query(
-      `SELECT * FROM user_containers WHERE id = $1 AND user_id = $2;`,
+      `SELECT uc.*, hs.subdomain, hs.base_domain
+       FROM user_containers uc
+       LEFT JOIN hyzen_subdomains hs ON hs.user_container_id = uc.id
+       WHERE uc.id = $1 AND uc.user_id = $2;`,
       [req.params.id, userId]
     );
     const row = rows[0];
@@ -324,7 +373,8 @@ router.get("/containers/:id", requireUser, async (req, res) => {
         workDir: row.work_dir || "",
         logFile: row.log_file || "",
         status: row.pid && isPidRunning(row.pid) ? "running" : "stopped",
-        url: getAccessUrl(req, row.id),
+        url: buildSubdomainUrl(row.subdomain, row.base_domain) || getAccessUrl(req, row.id),
+        subdomain: row.subdomain || null,
         suspended: Boolean(row.suspended) || access.isSuspended,
         suspendedReason: row.suspended_reason || (access.isSuspended ? access.reason : null),
       },
@@ -716,6 +766,40 @@ router.post("/containers/:id/delete", requireUser, async (req, res) => {
     return res.json({ ok: true });
   } catch {
     return res.status(500).json({ message: "Failed to delete" });
+  }
+});
+
+// ── User subdomains ───────────────────────────────────────────────────────────
+
+router.get("/subdomains", requireUser, async (req, res) => {
+  try {
+    const pool = getPool();
+    const userId = req.user.sub;
+    const { rows } = await pool.query(
+      `SELECT s.id, s.subdomain, s.base_domain, s.is_active, s.created_at,
+              uc.name AS container_name, uc.id AS container_id,
+              uc.pid AS container_pid
+       FROM hyzen_subdomains s
+       LEFT JOIN user_containers uc ON uc.id = s.user_container_id
+       WHERE s.user_id = $1
+       ORDER BY s.created_at DESC`,
+      [userId]
+    );
+    return res.json({
+      subdomains: rows.map((r) => ({
+        id: r.id,
+        subdomain: r.subdomain,
+        domain: `${r.subdomain}.${r.base_domain}`,
+        baseDomain: r.base_domain,
+        containerName: r.container_name || null,
+        containerId: r.container_id || null,
+        isActive: Boolean(r.is_active),
+        status: r.container_pid && isPidRunning(r.container_pid) ? "running" : "stopped",
+        createdAt: r.created_at,
+      })),
+    });
+  } catch {
+    return res.status(500).json({ message: "Failed to load subdomains" });
   }
 });
 

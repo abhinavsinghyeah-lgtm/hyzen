@@ -58,6 +58,21 @@ async function initDb() {
   await pool.query(`ALTER TABLE user_containers ALTER COLUMN container_id DROP NOT NULL;`);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS hyzen_subdomains (
+      id SERIAL PRIMARY KEY,
+      subdomain TEXT UNIQUE NOT NULL,
+      base_domain TEXT NOT NULL DEFAULT 'hyzen.pro',
+      user_container_id INTEGER,
+      admin_deployment_id INTEGER,
+      user_id INTEGER,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_hyzen_subdomains_subdomain ON hyzen_subdomains(subdomain);`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_hyzen_subdomains_user_container_id ON hyzen_subdomains(user_container_id);`);
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       id SERIAL PRIMARY KEY,
       email TEXT NOT NULL UNIQUE,

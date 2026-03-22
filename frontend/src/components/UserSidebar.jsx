@@ -7,6 +7,7 @@ import {
   ScrollText,
   Settings,
   CreditCard,
+  Globe,
   LogOut,
   ShieldCheck,
 } from "lucide-react";
@@ -62,6 +63,7 @@ export default function UserSidebar() {
     { label: "Servers", to: "/user/containers", Icon: Server },
     { label: "Deploy", to: "/user/deploy", Icon: Rocket },
     { label: "Logs", to: "/user/logs", Icon: ScrollText },
+    { label: "Subdomains", to: "/user/subdomains", Icon: Globe },
     { label: "Billing", to: "/user/billing", Icon: CreditCard },
     { label: "Settings", to: "/user/settings", Icon: Settings },
   ];

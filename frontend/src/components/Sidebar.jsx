@@ -10,6 +10,7 @@ import {
   BookOpen,
   Users,
   Server,
+  Globe,
   LogOut,
 } from "lucide-react";
 import { brand } from "../config/brand.js";
@@ -23,6 +24,7 @@ const navItems = [
   { label: "Settings", to: "/settings", Icon: Settings },
   { label: "Users", to: "/users", Icon: Users },
   { label: "User Servers", to: "/admin/containers", Icon: Server },
+  { label: "Subdomains", to: "/subdomains", Icon: Globe },
 ];
 
 function getInitials(name) {
