@@ -97,7 +97,7 @@ export default function UserDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="border p-4" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
               <div className="flex items-center justify-between">
-                <div className="text-sm" style={{ color: brand.textMuted }}>Online players</div>
+                <div className="text-sm" style={{ color: brand.textMuted }}>Online servers</div>
                 <Users2 size={16} style={{ color: brand.textMuted }} />
               </div>
               <div className="mt-2 text-4xl font-bold" style={{ color: brand.textPrimary }}>{running}</div>
@@ -105,7 +105,7 @@ export default function UserDashboard() {
 
             <div className="border p-4" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
               <div className="flex items-center justify-between">
-                <div className="text-sm" style={{ color: brand.textMuted }}>Networks</div>
+                <div className="text-sm" style={{ color: brand.textMuted }}>Servers</div>
                 <Network size={16} style={{ color: brand.textMuted }} />
               </div>
               <div className="mt-2 text-4xl font-bold" style={{ color: brand.textPrimary }}>{total}</div>
@@ -124,13 +124,13 @@ export default function UserDashboard() {
           </div>
 
           <div className="border p-5" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
-            <div className="text-2xl font-semibold" style={{ color: brand.textPrimary }}>Your Networks</div>
+            <div className="text-2xl font-semibold" style={{ color: brand.textPrimary }}>Your Servers</div>
             <div className="mt-4 border px-6 py-14 text-center" style={{ borderColor: brand.border, backgroundColor: "#0a121f" }}>
-              <div className="text-3xl font-bold" style={{ color: brand.textPrimary }}>{total === 0 ? "No networks yet" : `${total} network(s)`}</div>
+              <div className="text-3xl font-bold" style={{ color: brand.textPrimary }}>{total === 0 ? "No servers yet" : `${total} server(s)`}</div>
               <div className="text-sm mt-2" style={{ color: brand.textMuted }}>
                 {total === 0
-                  ? "Create your first network to start protecting your servers from attacks."
-                  : "Manage existing networks and connected servers from the Network page."}
+                  ? "Create your first server deployment to get started."
+                  : "Manage existing deployments and controls from the Servers page."}
               </div>
               <button
                 type="button"
@@ -138,7 +138,7 @@ export default function UserDashboard() {
                 style={{ backgroundColor: brand.primaryColor, color: "#ffffff", border: `1px solid ${brand.primaryColor}` }}
                 onClick={() => navigate("/user/containers")}
               >
-                {total === 0 ? "Create Network" : "Open Network"}
+                {total === 0 ? "Create Server" : "Open Servers"}
               </button>
             </div>
           </div>

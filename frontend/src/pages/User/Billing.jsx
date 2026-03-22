@@ -6,49 +6,39 @@ import { brand } from "../../config/brand.js";
 const plans = [
   {
     key: "starter",
-    title: "Launch",
-    display: "$20",
-    label: "Get Started",
+    title: "Starter",
+    display: "₹100",
+    label: "Choose Starter",
     features: [
-      "Up to 2 domains",
-      "Unlimited DDoS mitigation",
-      "Layer 4 & 7 protection",
-      "Email support",
-      "Basic analytics",
-      "Asia Pacific location",
+      "1 server",
+      "512 MB RAM",
+      "0.5 vCPU",
+      "Basic support",
     ],
   },
   {
     key: "pro",
-    title: "Growth",
-    display: "$45",
-    label: "Start Growth Plan",
+    title: "Pro",
+    display: "₹200",
+    label: "Choose Pro",
     featured: true,
     features: [
-      "Up to 10 domains",
-      "4Tbps mitigation capacity",
-      "Priority Layer 4 & 7 protection",
-      "24/7 priority support",
-      "Advanced analytics dashboard",
-      "Multi-location access",
-      "Server IP hiding",
-      "HAProxy + Cloudflare Spectrum",
+      "3 servers",
+      "1 GB RAM",
+      "1 vCPU",
+      "Priority support",
     ],
   },
   {
     key: "business",
-    title: "Enterprise",
-    display: "$95",
-    label: "Contact Sales",
+    title: "Business",
+    display: "₹500",
+    label: "Choose Business",
     features: [
-      "Unlimited domains",
-      "Full 4Tbps capacity guarantee",
-      "Dedicated protection engineer",
-      "Custom integration support",
-      "99.99% uptime SLA",
-      "Global multi-location setup",
-      "India location access",
-      "White-label options",
+      "10 servers",
+      "2 GB RAM",
+      "2 vCPU",
+      "Dedicated support",
     ],
   },
 ];
@@ -161,11 +151,11 @@ export default function UserBilling() {
   return (
     <div className="space-y-6">
       <div>
-        <div className="text-[44px] font-bold leading-none" style={{ color: brand.textPrimary }}>
+        <div className="text-4xl font-bold leading-tight" style={{ color: brand.textPrimary }}>
           Plans & Pricing
         </div>
-        <div className="text-base mt-2" style={{ color: brand.textMuted }}>
-          Choose the perfect plan for your gaming network
+        <div className="text-sm mt-1" style={{ color: brand.textMuted }}>
+          Choose the plan that fits your deployment needs
         </div>
       </div>
 
@@ -195,10 +185,10 @@ export default function UserBilling() {
                 </div>
               ) : null}
 
-              <div className="text-4xl font-bold" style={{ color: brand.textPrimary }}>{p.title}</div>
+              <div className="text-3xl font-bold" style={{ color: brand.textPrimary }}>{p.title}</div>
               <div className="mt-3 flex items-end gap-1">
-                <div className="text-5xl font-bold leading-none" style={{ color: brand.textPrimary }}>{p.display}</div>
-                <div className="text-xl" style={{ color: brand.textMuted }}>/month</div>
+                <div className="text-4xl font-bold leading-none" style={{ color: brand.textPrimary }}>{p.display}</div>
+                <div className="text-base" style={{ color: brand.textMuted }}>/month</div>
               </div>
 
               <button
