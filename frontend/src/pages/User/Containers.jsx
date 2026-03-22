@@ -143,10 +143,10 @@ export default function UserContainers() {
     <div className="space-y-4">
       <div>
         <div className="text-2xl font-bold" style={{ color: brand.textPrimary }}>
-          Servers
+          Networks
         </div>
         <div className="text-sm mt-1" style={{ color: brand.textMuted }}>
-          Manage your deployed servers.
+          Manage your protected networks and servers.
         </div>
       </div>
 
@@ -166,10 +166,10 @@ export default function UserContainers() {
         <div className="rounded-2xl border flex flex-col items-center justify-center text-center px-6 py-12 gap-3" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
           <Box size={22} style={{ color: brand.primaryColor }} />
           <div className="text-sm font-semibold" style={{ color: brand.textPrimary }}>
-            No servers yet
+            No networks yet
           </div>
           <div className="text-sm" style={{ color: brand.textMuted, maxWidth: 360 }}>
-            Deploy your first project to see it here.
+            Create your first network to start protecting your servers from attacks.
           </div>
           <button
             type="button"
@@ -177,7 +177,7 @@ export default function UserContainers() {
             style={{ backgroundColor: brand.primaryColor, color: brand.darkBg, border: `1px solid ${brand.primaryColor}` }}
             onClick={() => navigate("/user/deploy")}
           >
-            Deploy
+            Create Network
           </button>
         </div>
       ) : (

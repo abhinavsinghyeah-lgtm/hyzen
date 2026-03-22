@@ -27,6 +27,11 @@ body {
   letter-spacing: -0.005em;
 }
 
+/* Force sharp geometry across the app to match the requested style. */
+[class*="rounded"] {
+  border-radius: 0 !important;
+}
+
 body::before {
   content: none;
 }

@@ -1,11 +1,56 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
+import { CheckCircle2 } from "lucide-react";
 import { api } from "../../api.js";
 import { brand } from "../../config/brand.js";
 
 const plans = [
-  { key: "starter", label: "Starter", price: 10000, display: "₹100", ram: "512m", cpu: 0.5, containers: 1 },
-  { key: "pro", label: "Pro", price: 20000, display: "₹200", ram: "1g", cpu: 1, containers: 3 },
-  { key: "business", label: "Business", price: 50000, display: "₹500", ram: "2g", cpu: 2, containers: 10 },
+  {
+    key: "starter",
+    title: "Launch",
+    display: "$20",
+    label: "Get Started",
+    features: [
+      "Up to 2 domains",
+      "Unlimited DDoS mitigation",
+      "Layer 4 & 7 protection",
+      "Email support",
+      "Basic analytics",
+      "Asia Pacific location",
+    ],
+  },
+  {
+    key: "pro",
+    title: "Growth",
+    display: "$45",
+    label: "Start Growth Plan",
+    featured: true,
+    features: [
+      "Up to 10 domains",
+      "4Tbps mitigation capacity",
+      "Priority Layer 4 & 7 protection",
+      "24/7 priority support",
+      "Advanced analytics dashboard",
+      "Multi-location access",
+      "Server IP hiding",
+      "HAProxy + Cloudflare Spectrum",
+    ],
+  },
+  {
+    key: "business",
+    title: "Enterprise",
+    display: "$95",
+    label: "Contact Sales",
+    features: [
+      "Unlimited domains",
+      "Full 4Tbps capacity guarantee",
+      "Dedicated protection engineer",
+      "Custom integration support",
+      "99.99% uptime SLA",
+      "Global multi-location setup",
+      "India location access",
+      "White-label options",
+    ],
+  },
 ];
 
 function planColor(planKey) {
@@ -14,7 +59,6 @@ function planColor(planKey) {
 
 export default function UserBilling() {
   const token = api.getUserToken();
-
   const [billing, setBilling] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -84,9 +128,7 @@ export default function UserBilling() {
           setPayingPlan(null);
         }
       },
-      theme: {
-        color: brand.primaryColor,
-      },
+      theme: { color: brand.primaryColor },
     };
 
     const rzp = new window.Razorpay(options);
@@ -108,119 +150,92 @@ export default function UserBilling() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border p-4" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
+      <div className="border p-4" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
         <div style={{ color: brand.textMuted }}>Loading...</div>
       </div>
     );
   }
 
   const currentPlanKey = billing?.plan?.key || "free";
-  const currentDays = billing?.plan?.daysRemaining ?? 0;
-  const currentExpires = billing?.plan?.plan_expires_at;
-  const currentColor = planColor(currentPlanKey);
 
   return (
     <div className="space-y-6">
       <div>
-        <div className="text-2xl font-bold" style={{ color: brand.textPrimary }}>
-          Billing
+        <div className="text-[44px] font-bold leading-none" style={{ color: brand.textPrimary }}>
+          Plans & Pricing
         </div>
-        <div className="text-sm mt-1" style={{ color: brand.textMuted }}>
-          Upgrade to deploy more containers.
+        <div className="text-base mt-2" style={{ color: brand.textMuted }}>
+          Choose the perfect plan for your gaming network
         </div>
       </div>
 
       {error ? (
-        <div className="rounded-2xl border px-4 py-3" style={{ backgroundColor: `${brand.dangerColor}12`, borderColor: `${brand.dangerColor}55` }}>
+        <div className="border px-4 py-3" style={{ backgroundColor: `${brand.dangerColor}12`, borderColor: `${brand.dangerColor}55` }}>
           <div style={{ color: brand.textPrimary, fontSize: 13, fontWeight: 600 }}>{error}</div>
         </div>
       ) : null}
+
       {success ? (
-        <div className="rounded-2xl border px-4 py-3" style={{ backgroundColor: `${brand.onlineColor}12`, borderColor: `${brand.onlineColor}55` }}>
+        <div className="border px-4 py-3" style={{ backgroundColor: `${brand.onlineColor}12`, borderColor: `${brand.onlineColor}55` }}>
           <div style={{ color: brand.textPrimary, fontSize: 13, fontWeight: 600 }}>{success}</div>
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr] gap-4">
-        <div className="rounded-2xl border p-5" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-sm font-semibold" style={{ color: brand.textPrimary }}>Current Plan</div>
-              <div className="text-sm mt-1" style={{ color: brand.textMuted }}>
-                Expires in {currentDays} day{currentDays === 1 ? "" : "s"}
-              </div>
-            </div>
-            <span
-              className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold"
-              style={{ backgroundColor: `${currentColor}1a`, border: `1px solid ${currentColor}`, color: currentColor }}
-            >
-              {currentPlanKey === "free"
-                ? "Free"
-                : currentPlanKey === "starter"
-                  ? "Starter"
-                  : currentPlanKey === "pro"
-                    ? "Pro"
-                    : "Business"}
-            </span>
-          </div>
-          <div className="mt-4 text-sm" style={{ color: brand.textMuted }}>
-            {currentExpires ? `Expiry date: ${new Date(currentExpires).toLocaleDateString()}` : "No active subscription"}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border p-5" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
-          <div className="text-sm font-semibold" style={{ color: brand.textPrimary }}>Plan Usage</div>
-          <div className="mt-3">
-            <div className="text-sm" style={{ color: brand.textMuted }}>
-              {billing?.containersUsed} of {billing?.containersAllowed} containers used
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {plans.map((p) => {
           const color = planColor(p.key);
-          const disabled = payingPlan === p.key;
           const active = currentPlanKey === p.key;
+          const disabled = active || payingPlan === p.key;
+
           return (
-            <div
-              key={p.key}
-              className="rounded-2xl border p-5 transition-all duration-200"
-              style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}
-            >
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-sm font-semibold" style={{ color: brand.textPrimary }}>{p.label}</div>
-                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: `${color}1a`, border: `1px solid ${color}`, color }}>
-                  {p.display}
-                </span>
-              </div>
-              <div className="mt-3 text-sm" style={{ color: brand.textMuted }}>
-                Containers: {p.containers}
-              </div>
-              <div className="text-sm" style={{ color: brand.textMuted }}>
-                RAM: {p.ram} • CPU: {p.cpu}
+            <div key={p.key} className="border p-5 relative" style={{ backgroundColor: brand.cardBg, borderColor: p.featured ? `${brand.primaryColor}77` : brand.border }}>
+              {p.featured ? (
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 text-xs font-semibold" style={{ backgroundColor: brand.primaryColor, color: "#ffffff" }}>
+                  Most Popular
+                </div>
+              ) : null}
+
+              <div className="text-4xl font-bold" style={{ color: brand.textPrimary }}>{p.title}</div>
+              <div className="mt-3 flex items-end gap-1">
+                <div className="text-5xl font-bold leading-none" style={{ color: brand.textPrimary }}>{p.display}</div>
+                <div className="text-xl" style={{ color: brand.textMuted }}>/month</div>
               </div>
 
               <button
                 type="button"
-                className="mt-4 w-full rounded-2xl px-5 py-2 transition-all duration-200 cursor-pointer font-semibold"
-                disabled={active || disabled}
+                className="mt-5 w-full px-4 py-2 text-sm font-semibold transition-all duration-200"
+                disabled={disabled}
                 style={{
-                  backgroundColor: active ? `${color}15` : brand.primaryColor,
-                  border: `1px solid ${active ? `${color}55` : brand.primaryColor}`,
-                  color: active ? color : brand.darkBg,
-                  opacity: active || disabled ? 0.7 : 1,
+                  backgroundColor: p.featured ? brand.primaryColor : "#02050b",
+                  border: `1px solid ${p.featured ? brand.primaryColor : brand.border}`,
+                  color: "#ffffff",
+                  opacity: disabled ? 0.7 : 1,
                 }}
                 onClick={() => onUpgrade(p.key)}
               >
-                {active ? "Current plan" : disabled ? "Processing..." : "Upgrade"}
+                {active ? "Current Plan" : payingPlan === p.key ? "Processing..." : p.label}
               </button>
+
+              <div className="mt-5 space-y-3">
+                {p.features.map((feature) => (
+                  <div key={feature} className="flex items-start gap-2 text-sm" style={{ color: brand.textMuted }}>
+                    <CheckCircle2 size={15} style={{ color }} />
+                    <span>{feature}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           );
         })}
       </div>
+
+      <div className="border p-5" style={{ backgroundColor: brand.cardBg, borderColor: brand.border }}>
+        <div className="text-2xl font-semibold" style={{ color: brand.textPrimary }}>Credits Balance</div>
+        <div className="text-sm mt-2" style={{ color: brand.textMuted }}>
+          Your current credits for bandwidth and protection services
+        </div>
+        <div className="mt-4 text-5xl font-bold" style={{ color: brand.textPrimary }}>0</div>
+      </div>
     </div>
   );
 }
-

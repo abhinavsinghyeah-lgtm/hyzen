@@ -44,7 +44,7 @@ function ProtectedAdminLayout({ children }) {
   return (
     <div className="min-h-screen flex">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto p-8 transition-all duration-200 hyzen-fade-in">
+      <main className="flex-1 overflow-y-auto p-6 transition-all duration-200 hyzen-fade-in">
         {children}
       </main>
     </div>
@@ -55,7 +55,7 @@ function ProtectedUserLayout({ children }) {
   return (
     <div className="min-h-screen flex">
       <UserSidebar />
-      <main className="flex-1 overflow-y-auto p-8 transition-all duration-200 hyzen-fade-in">
+      <main className="flex-1 overflow-y-auto p-6 transition-all duration-200 hyzen-fade-in">
         {children}
       </main>
     </div>
