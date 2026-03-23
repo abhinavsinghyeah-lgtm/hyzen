@@ -13,6 +13,7 @@ import Deploy from "./pages/Deploy.jsx";
 import Logs from "./pages/Logs.jsx";
 import Settings from "./pages/Settings.jsx";
 import Users from "./pages/Users.jsx";
+import Nodes from "./pages/Nodes.jsx";
 import ContainerControl from "./pages/ContainerControl.jsx";
 import AdminUserContainers from "./pages/AdminUserContainers.jsx";
 import AdminUserContainerControl from "./pages/AdminUserContainerControl.jsx";
@@ -245,6 +246,16 @@ export default function App() {
           <RequireAdminAuth>
             <ProtectedAdminLayout>
               <Users />
+            </ProtectedAdminLayout>
+          </RequireAdminAuth>
+        }
+      />
+      <Route
+        path="/nodes"
+        element={
+          <RequireAdminAuth>
+            <ProtectedAdminLayout>
+              <Nodes />
             </ProtectedAdminLayout>
           </RequireAdminAuth>
         }

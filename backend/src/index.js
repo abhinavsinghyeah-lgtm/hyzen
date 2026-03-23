@@ -14,6 +14,7 @@ const deployRoutes = require("./routes/deploy");
 const userRoutes = require("./routes/user");
 const adminRoutes = require("./routes/admin");
 const subdomainRoutes = require("./routes/subdomains");
+const nodesRoutes = require("./routes/nodes");
 
 const { requireAdmin } = require("./middleware/auth");
 
@@ -324,74 +325,89 @@ app.use("/api/auth", authRoutes);
 app.use("/api/containers", requireAdmin, containersRoutes);
 app.use("/api/deploy", requireAdmin, deployRoutes);
 
-// VPS stats (protected)
 const systeminformation = require("systeminformation");
+async function getPanelStats() {
+  if (Date.now() - vpsCache.ts < VPS_CACHE_MS && vpsCache.value) {
+    return vpsCache.value;
+  }
+
+  const [load, mem, disks, cpu, time] = await Promise.all([
+    systeminformation.currentLoad(),
+    systeminformation.mem(),
+    systeminformation.fsSize(),
+    systeminformation.cpu(),
+    systeminformation.time(),
+  ]);
+
+  const cpuPercent = Math.max(0, Math.min(100, Number(load.currentLoad || 0)));
+  const totalCores = Number(cpu?.cores || load?.cpus?.length || 0);
+  const usedCores = Number(((cpuPercent / 100) * totalCores).toFixed(2));
+  const ramUsedBytes = Number(mem.used || 0);
+  const ramTotalBytes = Number(mem.total || 0);
+  const ramFreeBytes = Number(mem.available || 0);
+
+  const root =
+    (Array.isArray(disks) ? disks.find((d) => d.mount === "/" || d.fs === "/") : null) ||
+    (Array.isArray(disks) ? disks[0] : null);
+
+  const diskUsedBytes = Number(root?.used || 0);
+  const diskTotalBytes = Number(root?.size || 0);
+  const diskFreeBytes = Math.max(0, diskTotalBytes - diskUsedBytes);
+  const uptimeSeconds = Number(time?.uptime || 0);
+
+  const value = {
+    cpuPercent,
+    cpu: {
+      usedCores,
+      totalCores,
+      processor: [cpu?.manufacturer, cpu?.brand].filter(Boolean).join(" ").trim() || "Unknown CPU",
+      speedGHz: Number(cpu?.speed || 0),
+    },
+    ram: {
+      usedBytes: ramUsedBytes,
+      totalBytes: ramTotalBytes,
+      freeBytes: ramFreeBytes,
+    },
+    disk: {
+      usedBytes: diskUsedBytes,
+      totalBytes: diskTotalBytes,
+      freeBytes: diskFreeBytes,
+    },
+    system: {
+      uptimeSeconds,
+      hostname: String(process.env.HOSTNAME || ""),
+      role: "panel",
+    },
+  };
+
+  vpsCache = { ts: Date.now(), value };
+  return value;
+}
+
+// Panel stats (protected)
+app.get("/api/panel/stats", requireAdmin, async (req, res) => {
+  try {
+    const stats = await getPanelStats();
+    return res.json(stats);
+  } catch {
+    return res.status(500).json({ message: "Failed to get panel stats" });
+  }
+});
+
+// Backward-compatible alias for older frontend builds.
 app.get("/api/vps/stats", requireAdmin, async (req, res) => {
   try {
-    if (Date.now() - vpsCache.ts < VPS_CACHE_MS && vpsCache.value) {
-      res.json(vpsCache.value);
-      return;
-    }
-
-    const [load, mem, disks, cpu, time] = await Promise.all([
-      systeminformation.currentLoad(),
-      systeminformation.mem(),
-      systeminformation.fsSize(),
-      systeminformation.cpu(),
-      systeminformation.time(),
-    ]);
-
-    const cpuPercent = Math.max(0, Math.min(100, Number(load.currentLoad || 0)));
-    const totalCores = Number(cpu?.cores || load?.cpus?.length || 0);
-    const usedCores = Number(((cpuPercent / 100) * totalCores).toFixed(2));
-    const ramUsedBytes = Number(mem.used || 0);
-    const ramTotalBytes = Number(mem.total || 0);
-    const ramFreeBytes = Number(mem.available || 0);
-
-    // Prefer root if present; otherwise take the first filesystem entry.
-    const root =
-      (Array.isArray(disks) ? disks.find((d) => d.mount === "/" || d.fs === "/") : null) ||
-      (Array.isArray(disks) ? disks[0] : null);
-
-    const diskUsedBytes = Number(root?.used || 0);
-    const diskTotalBytes = Number(root?.size || 0);
-    const diskFreeBytes = Math.max(0, diskTotalBytes - diskUsedBytes);
-    const uptimeSeconds = Number(time?.uptime || 0);
-
-    const value = {
-      cpuPercent,
-      cpu: {
-        usedCores,
-        totalCores,
-        processor: [cpu?.manufacturer, cpu?.brand].filter(Boolean).join(" ").trim() || "Unknown CPU",
-        speedGHz: Number(cpu?.speed || 0),
-      },
-      ram: {
-        usedBytes: ramUsedBytes,
-        totalBytes: ramTotalBytes,
-        freeBytes: ramFreeBytes,
-      },
-      disk: {
-        usedBytes: diskUsedBytes,
-        totalBytes: diskTotalBytes,
-        freeBytes: diskFreeBytes,
-      },
-      system: {
-        uptimeSeconds,
-        hostname: String(process.env.HOSTNAME || ""),
-      },
-    };
-
-    vpsCache = { ts: Date.now(), value };
-    return res.json(value);
+    const stats = await getPanelStats();
+    return res.json(stats);
   } catch {
-    return res.status(500).json({ message: "Failed to get VPS stats" });
+    return res.status(500).json({ message: "Failed to get panel stats" });
   }
 });
 
 app.use("/api/user", userRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/subdomains", subdomainRoutes);
+app.use("/api/nodes", nodesRoutes);
 
 const PORT = Number(process.env.PORT || 4000);
 

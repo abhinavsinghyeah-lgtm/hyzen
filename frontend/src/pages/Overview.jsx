@@ -7,6 +7,7 @@ import {
   Cpu,
   Database,
   HardDrive,
+  Network,
   Play,
   Server,
   Square,
@@ -66,7 +67,8 @@ function ProgressBar({ label, valueText, percent }) {
 
 export default function Overview() {
   const [containers, setContainers] = useState([]);
-  const [vpsStats, setVpsStats] = useState(null);
+  const [panelStats, setPanelStats] = useState(null);
+  const [nodesSummary, setNodesSummary] = useState({ total: 0, active: 0, online: 0, offline: 0 });
   const [error, setError] = useState("");
 
   const counts = useMemo(() => {
@@ -78,17 +80,19 @@ export default function Overview() {
 
   async function fetchData() {
     setError("");
-    const [cRes, vRes] = await Promise.allSettled([
+    const [cRes, pRes, nRes] = await Promise.allSettled([
       api.getJson("/api/containers"),
-      api.getJson("/api/vps/stats"),
+      api.getPanelStats(),
+      api.getNodes(),
     ]);
 
     if (cRes.status === "fulfilled") setContainers(cRes.value || []);
-    if (vRes.status === "fulfilled") setVpsStats(vRes.value);
+    if (pRes.status === "fulfilled") setPanelStats(pRes.value);
+    if (nRes.status === "fulfilled") setNodesSummary(nRes.value?.summary || { total: 0, active: 0, online: 0, offline: 0 });
 
     if (
-      (cRes.status === "rejected" || vRes.status === "rejected") &&
-      !vpsStats
+      (cRes.status === "rejected" || pRes.status === "rejected") &&
+      !panelStats
     ) {
       setError("Failed to load dashboard data.");
     }
@@ -101,22 +105,22 @@ export default function Overview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const cpuPercent = Number(vpsStats?.cpuPercent ?? 0);
-  const cpuUsedCores = Number(vpsStats?.cpu?.usedCores ?? 0);
-  const cpuTotalCores = Number(vpsStats?.cpu?.totalCores ?? 0);
-  const cpuModel = String(vpsStats?.cpu?.processor || "--");
-  const ramUsedBytes = Number(vpsStats?.ram?.usedBytes ?? 0);
-  const ramTotalBytes = Number(vpsStats?.ram?.totalBytes ?? 0);
-  const ramFreeBytes = Number(vpsStats?.ram?.freeBytes ?? 0);
-  const diskUsedBytes = Number(vpsStats?.disk?.usedBytes ?? 0);
-  const diskTotalBytes = Number(vpsStats?.disk?.totalBytes ?? 0);
-  const diskFreeBytes = Number(vpsStats?.disk?.freeBytes ?? 0);
-  const uptime = formatDuration(vpsStats?.system?.uptimeSeconds ?? 0);
+  const cpuPercent = Number(panelStats?.cpuPercent ?? 0);
+  const cpuUsedCores = Number(panelStats?.cpu?.usedCores ?? 0);
+  const cpuTotalCores = Number(panelStats?.cpu?.totalCores ?? 0);
+  const cpuModel = String(panelStats?.cpu?.processor || "--");
+  const ramUsedBytes = Number(panelStats?.ram?.usedBytes ?? 0);
+  const ramTotalBytes = Number(panelStats?.ram?.totalBytes ?? 0);
+  const ramFreeBytes = Number(panelStats?.ram?.freeBytes ?? 0);
+  const diskUsedBytes = Number(panelStats?.disk?.usedBytes ?? 0);
+  const diskTotalBytes = Number(panelStats?.disk?.totalBytes ?? 0);
+  const diskFreeBytes = Number(panelStats?.disk?.freeBytes ?? 0);
+  const uptime = formatDuration(panelStats?.system?.uptimeSeconds ?? 0);
 
   const ramPercent = ramTotalBytes > 0 ? (ramUsedBytes / ramTotalBytes) * 100 : 0;
   const diskPercent = diskTotalBytes > 0 ? (diskUsedBytes / diskTotalBytes) * 100 : 0;
 
-  const isOnline = !!vpsStats;
+  const isPanelOnline = !!panelStats;
 
   const cards = [
     {
@@ -144,12 +148,20 @@ export default function Overview() {
       tone: brand.offlineColor,
     },
     {
-      key: "uptime",
-      label: "VPS Uptime",
+      key: "panel",
+      label: "Panel Uptime",
       value: uptime,
-      hint: "Server uptime",
+      hint: "Control-plane uptime",
       Icon: Clock3,
       tone: brand.accentColor,
+    },
+    {
+      key: "nodes",
+      label: "Node Online",
+      value: `${nodesSummary.online}/${nodesSummary.active || nodesSummary.total || 0}`,
+      hint: "Active server nodes",
+      Icon: Network,
+      tone: nodesSummary.online > 0 ? brand.onlineColor : brand.warningColor,
     },
   ];
 
@@ -189,7 +201,7 @@ export default function Overview() {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4">
         {cards.map((stat) => {
           return (
             <div
@@ -231,24 +243,24 @@ export default function Overview() {
         >
           <div className="flex items-center justify-between">
             <div style={{ color: brand.textPrimary, fontSize: 14, fontWeight: 800 }}>Infrastructure Health</div>
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: isOnline ? `${brand.onlineColor}1a` : `${brand.offlineColor}1a`, color: isOnline ? brand.onlineColor : brand.offlineColor, border: `1px solid ${isOnline ? brand.onlineColor : brand.offlineColor}` }}>
+            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: isPanelOnline ? `${brand.onlineColor}1a` : `${brand.offlineColor}1a`, color: isPanelOnline ? brand.onlineColor : brand.offlineColor, border: `1px solid ${isPanelOnline ? brand.onlineColor : brand.offlineColor}` }}>
               <Activity size={13} />
-              {isOnline ? "Live" : "Offline"}
+              {isPanelOnline ? "Panel Live" : "Panel Offline"}
             </span>
           </div>
           <ProgressBar
             label="CPU"
-            valueText={vpsStats ? `${cpuPercent.toFixed(1)}% (${cpuUsedCores.toFixed(2)} / ${cpuTotalCores || 0} cores)` : "--"}
+            valueText={panelStats ? `${cpuPercent.toFixed(1)}% (${cpuUsedCores.toFixed(2)} / ${cpuTotalCores || 0} cores)` : "--"}
             percent={cpuPercent}
           />
           <ProgressBar
             label="RAM"
-            valueText={vpsStats ? `${formatBytes(ramUsedBytes)} / ${formatBytes(ramTotalBytes)}` : "--"}
+            valueText={panelStats ? `${formatBytes(ramUsedBytes)} / ${formatBytes(ramTotalBytes)}` : "--"}
             percent={ramPercent}
           />
           <ProgressBar
             label="Storage"
-            valueText={vpsStats ? `${formatBytes(diskUsedBytes)} / ${formatBytes(diskTotalBytes)}` : "--"}
+            valueText={panelStats ? `${formatBytes(diskUsedBytes)} / ${formatBytes(diskTotalBytes)}` : "--"}
             percent={diskPercent}
           />
 
@@ -258,12 +270,12 @@ export default function Overview() {
               { label: "Uptime", value: uptime, Icon: Clock3 },
               {
                 label: "RAM Free",
-                value: vpsStats ? formatBytes(ramFreeBytes) : "--",
+                value: panelStats ? formatBytes(ramFreeBytes) : "--",
                 Icon: Server,
               },
               {
                 label: "Storage Free",
-                value: vpsStats ? formatBytes(diskFreeBytes) : "--",
+                value: panelStats ? formatBytes(diskFreeBytes) : "--",
                 Icon: HardDrive,
               },
             ].map((item) => (
@@ -339,18 +351,18 @@ export default function Overview() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold" style={{ color: brand.textPrimary }}>
-                  VPS Status
+                  Panel Status
                 </div>
                 <div className="text-sm" style={{ color: brand.textMuted }}>
-                  {isOnline ? "Online" : "Offline"}
+                  {isPanelOnline ? "Online" : "Offline"}
                 </div>
               </div>
               <span
                 className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold transition-all duration-200"
                 style={{
-                  backgroundColor: `${isOnline ? brand.onlineColor : brand.offlineColor}1a`,
-                  border: `1px solid ${isOnline ? brand.onlineColor : brand.offlineColor}`,
-                  color: isOnline ? brand.onlineColor : brand.offlineColor,
+                  backgroundColor: `${isPanelOnline ? brand.onlineColor : brand.offlineColor}1a`,
+                  border: `1px solid ${isPanelOnline ? brand.onlineColor : brand.offlineColor}`,
+                  color: isPanelOnline ? brand.onlineColor : brand.offlineColor,
                 }}
               >
                 <span
@@ -358,11 +370,40 @@ export default function Overview() {
                     width: 7,
                     height: 7,
                     borderRadius: 9999,
-                    backgroundColor: isOnline ? brand.onlineColor : brand.offlineColor,
+                    backgroundColor: isPanelOnline ? brand.onlineColor : brand.offlineColor,
                     display: "inline-block",
                   }}
                 />
-                {isOnline ? "Online" : "Offline"}
+                {isPanelOnline ? "Online" : "Offline"}
+              </span>
+            </div>
+          </div>
+
+          <div
+            className="rounded-[22px] border p-5"
+            style={{
+              backgroundColor: brand.cardBg,
+              borderColor: brand.border,
+            }}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold" style={{ color: brand.textPrimary }}>
+                  Node Status
+                </div>
+                <div className="text-sm" style={{ color: brand.textMuted }}>
+                  {nodesSummary.online} online, {nodesSummary.offline} offline
+                </div>
+              </div>
+              <span
+                className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold"
+                style={{
+                  backgroundColor: `${nodesSummary.online > 0 ? brand.onlineColor : brand.warningColor}1a`,
+                  border: `1px solid ${nodesSummary.online > 0 ? brand.onlineColor : brand.warningColor}`,
+                  color: nodesSummary.online > 0 ? brand.onlineColor : brand.warningColor,
+                }}
+              >
+                <Network size={13} /> {nodesSummary.online}/{nodesSummary.active || nodesSummary.total || 0}
               </span>
             </div>
           </div>
@@ -376,11 +417,11 @@ export default function Overview() {
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-2"><Database size={14} /> RAM</span>
-                <strong style={{ color: brand.textPrimary }}>{vpsStats ? `${formatBytes(ramUsedBytes)} / ${formatBytes(ramTotalBytes)}` : "--"}</strong>
+                <strong style={{ color: brand.textPrimary }}>{panelStats ? `${formatBytes(ramUsedBytes)} / ${formatBytes(ramTotalBytes)}` : "--"}</strong>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-2"><HardDrive size={14} /> Storage</span>
-                <strong style={{ color: brand.textPrimary }}>{vpsStats ? `${formatBytes(diskUsedBytes)} / ${formatBytes(diskTotalBytes)}` : "--"}</strong>
+                <strong style={{ color: brand.textPrimary }}>{panelStats ? `${formatBytes(diskUsedBytes)} / ${formatBytes(diskTotalBytes)}` : "--"}</strong>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span className="inline-flex items-center gap-2"><Server size={14} /> Processor</span>

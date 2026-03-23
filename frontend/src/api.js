@@ -156,6 +156,34 @@ export const api = {
   async userGetSubdomains() {
     return getJson("/api/user/subdomains", { token: getUserToken() });
   },
+
+  // ── Panel + Nodes ─────────────────────────────────────────────────────────
+  async getPanelStats() {
+    return getJson("/api/panel/stats");
+  },
+  async getNodes() {
+    return getJson("/api/nodes");
+  },
+  async createNode(payload) {
+    const res = await request("/api/nodes", {
+      method: "POST",
+      body: JSON.stringify(payload || {}),
+    });
+    return res.json();
+  },
+  async updateNode(id, payload) {
+    const res = await request(`/api/nodes/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload || {}),
+    });
+    return res.json();
+  },
+  async deleteNode(id) {
+    const res = await request(`/api/nodes/${id}`, {
+      method: "DELETE",
+    });
+    return res.json();
+  },
 };
 
 export async function apiStream(path, options = {}) {

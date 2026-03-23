@@ -44,6 +44,7 @@ async function initDb() {
   await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS env_vars JSONB;`);
   await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS suspended BOOLEAN NOT NULL DEFAULT FALSE;`);
   await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS suspended_reason TEXT;`);
+  await pool.query(`ALTER TABLE hyzen_deployments ADD COLUMN IF NOT EXISTS node_id INTEGER;`);
 
   await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS pid INTEGER;`);
   await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS work_dir TEXT;`);
@@ -55,7 +56,23 @@ async function initDb() {
   await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS build_cmd TEXT;`);
   await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS suspended BOOLEAN NOT NULL DEFAULT FALSE;`);
   await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS suspended_reason TEXT;`);
+  await pool.query(`ALTER TABLE user_containers ADD COLUMN IF NOT EXISTS node_id INTEGER;`);
   await pool.query(`ALTER TABLE user_containers ALTER COLUMN container_id DROP NOT NULL;`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS hyzen_nodes (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      host TEXT,
+      node_token TEXT UNIQUE NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      last_seen_at TIMESTAMPTZ,
+      last_stats_json JSONB,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_hyzen_nodes_last_seen ON hyzen_nodes(last_seen_at);`);
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS hyzen_subdomains (

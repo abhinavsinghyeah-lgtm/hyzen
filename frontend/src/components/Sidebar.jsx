@@ -11,6 +11,7 @@ import {
   Users,
   Server,
   Globe,
+  Network,
   LogOut,
 } from "lucide-react";
 import { brand } from "../config/brand.js";
@@ -23,6 +24,7 @@ const navItems = [
   { label: "Logs", to: "/logs", Icon: ScrollText },
   { label: "Settings", to: "/settings", Icon: Settings },
   { label: "Users", to: "/users", Icon: Users },
+  { label: "Nodes", to: "/nodes", Icon: Network },
   { label: "User Servers", to: "/admin/containers", Icon: Server },
   { label: "Subdomains", to: "/subdomains", Icon: Globe },
 ];
